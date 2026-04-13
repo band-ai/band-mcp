@@ -8,7 +8,7 @@ requires-python = ">=3.11"
 dependencies = [
     "mcp[cli]>=1.23.0",
     "pydantic-settings>=2.1.0",
-    "thenvoi-client-rest>=0.0.4",
+    "thenvoi-client-rest>=0.0.7",
     "uvicorn>=0.30.0",  # Required for SSE transport mode
 ]
 
