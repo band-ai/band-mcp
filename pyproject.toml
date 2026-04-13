@@ -26,7 +26,7 @@ dev = [
 langgraph = [
     "langchain-core>=1.2.5",
     "langchain-mcp-adapters>=0.1.0",
-    "langchain-openai>=0.2.0",
+    "langchain-openai>=1.1.12",
     "langgraph>=0.2.0",
     "python-dotenv>=1.0.0",
 ]
@@ -34,7 +34,7 @@ langgraph = [
 langchain = [
     "langchain-core>=1.2.5",
     "langchain-mcp-adapters>=0.1.0",
-    "langchain-openai>=0.2.0",
+    "langchain-openai>=1.1.12",
     "langchain>=0.3.0",
     "python-dotenv>=1.0.0",
 ]
@@ -42,7 +42,7 @@ langchain = [
 examples = [
     "langchain-core>=1.2.5",
     "langchain-mcp-adapters>=0.1.0",
-    "langchain-openai>=0.2.0",
+    "langchain-openai>=1.1.12",
     "langchain>=0.3.0",
     "langgraph>=0.2.0",
     "python-dotenv>=1.0.0",
