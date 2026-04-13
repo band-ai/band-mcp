@@ -35,7 +35,7 @@ langchain = [
     "langchain-core>=1.2.5",
     "langchain-mcp-adapters>=0.1.0",
     "langchain-openai>=0.2.0",
-    "langchain>=0.3.0",
+    "langchain>=1.2.15",
     "python-dotenv>=1.0.0",
 ]
 # All examples dependencies (convenience group)
@@ -43,7 +43,7 @@ examples = [
     "langchain-core>=1.2.5",
     "langchain-mcp-adapters>=0.1.0",
     "langchain-openai>=0.2.0",
-    "langchain>=0.3.0",
+    "langchain>=1.2.15",
     "langgraph>=0.2.0",
     "python-dotenv>=1.0.0",
 ]
