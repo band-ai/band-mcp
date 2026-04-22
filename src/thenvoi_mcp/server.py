@@ -20,6 +20,7 @@ from thenvoi_mcp import __version__
 from thenvoi_mcp.config import (
     Config,
     ConfigError,
+    _legacy_key_capabilities,
     resolve_config,
     settings,
     validate,
@@ -123,17 +124,6 @@ def health_check(ctx: AppContextType) -> str:
         return f"Failed | {key_type} | {e}"
 
 
-def _split_csv(values: list[str] | None) -> list[str] | None:
-    """Expand argparse `append` values so `--scope a,b --scope c` -> ['a','b','c'].
-
-    Returned value is passed to `resolve_config` as-is; `_normalize_list_value`
-    inside `config.py` does the final trim/lowercase/dedupe.
-    """
-    if values is None:
-        return None
-    return list(values)
-
-
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
@@ -228,13 +218,18 @@ Environment Variables:
 
 
 def _cli_mapping(args: argparse.Namespace) -> dict[str, object]:
-    """Flatten argparse results into the shape `resolve_config` expects."""
+    """Flatten argparse results into the shape `resolve_config` expects.
+
+    `scope` and `tools` use argparse `action="append"`, so they arrive as
+    `list[str] | None`. `_normalize_list_value` in `config.py` handles the
+    final trim/split/lowercase/dedupe — we pass the raw list straight through.
+    """
     return {
         "user_key": args.user_key,
         "agent_key": args.agent_key,
         "room_id": args.room_id,
-        "scope": _split_csv(args.scope),
-        "tools": _split_csv(args.tools),
+        "scope": args.scope,
+        "tools": args.tools,
     }
 
 
@@ -276,6 +271,25 @@ def run() -> None:
         else:
             logger.error("Configuration error: %s", exc)
             raise SystemExit(2) from exc
+
+    # Escape-hatch scope write-back (C2/I3): when this is a pure-legacy
+    # invocation, replace the default scope (["agent"]) with whatever the
+    # legacy key actually serves. Two reasons:
+    #   1. Startup logs below print `Resolved scope`; that line must match the
+    #      tools that `load_tools(key_type)` will actually register.
+    #   2. Phase 3's registrar reads `AppContext.scope` to pick the surface.
+    #      A `thnv_u_*` legacy key must land there as ["human"], not ["agent"].
+    # We do this for every pure-legacy invocation (validate() may have passed
+    # for an all-capable `thnv_*` key, in which case config.scope is still the
+    # default ["agent"] but load_tools will load both surfaces).
+    if _is_pure_legacy_invocation(args, config):
+        legacy_human, legacy_agent = _legacy_key_capabilities(config.legacy_key)
+        legacy_scope: list[Literal["agent", "human"]] = []
+        if legacy_agent:
+            legacy_scope.append("agent")
+        if legacy_human:
+            legacy_scope.append("human")
+        config.scope = legacy_scope
 
     set_pending_config(config)
 
