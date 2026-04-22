@@ -6,6 +6,25 @@
           "--directory",
           "/ABSOLUTE/PATH/TO/thenvoi-mcp-server",
           "run",
+          "thenvoi-mcp",
+          "--scope",
+          "agent",
+          "--tools",
+          "contacts"
+        ],
+        "env": {
+          "THENVOI_AGENT_KEY": "thnv_a_your_agent_key",
+          "THENVOI_USER_KEY": "thnv_u_your_user_key",
+          "THENVOI_BASE_URL": "https://app.thenvoi.com"
+        }
+      },
+      "thenvoi_legacy": {
+        "_comment": "Legacy single-key setup. Still supported; prefer THENVOI_USER_KEY / THENVOI_AGENT_KEY for new deployments.",
+        "command": "uv",
+        "args": [
+          "--directory",
+          "/ABSOLUTE/PATH/TO/thenvoi-mcp-server",
+          "run",
           "thenvoi-mcp"
         ],
         "env": {
@@ -15,4 +34,3 @@
       }
     }
   }
-  
