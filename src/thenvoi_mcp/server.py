@@ -258,7 +258,13 @@ def run() -> None:
     # ``iter_tool_definitions(surface=s, ...)`` entry for each scope in
     # ``config.scope``. Single source of truth for tool definitions, shared
     # with ``thenvoi-sdk-python``.
-    register_tools(mcp, config)
+    try:
+        register_tools(mcp, config)
+    except ConfigError as exc:
+        # Missing SDK is fatal (INT-352). Fall out cleanly with exit code 2 so
+        # operators see the actionable message instead of a traceback.
+        logger.error("Configuration error: %s", exc)
+        raise SystemExit(2) from exc
 
     # Determine transport mode (CLI args override env vars)
     transport: Literal["stdio", "sse"] = args.transport or settings.transport

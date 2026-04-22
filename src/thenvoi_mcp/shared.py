@@ -27,7 +27,12 @@ from mcp.server.session import ServerSession
 from mcp.server.transport_security import TransportSecuritySettings
 from thenvoi_rest import AsyncRestClient
 
-from thenvoi_mcp.config import Config, settings, resolve_credential_for_scope
+from thenvoi_mcp.config import (
+    Config,
+    ConfigError,
+    settings,
+    resolve_credential_for_scope,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -68,36 +73,36 @@ class AppContext:
 AppContextType = Context[ServerSession, AppContext, None]
 
 
-def _try_import_human_tools() -> Any:
-    """Return SDK `HumanTools` class or None if unavailable.
+def _require_sdk_tools() -> tuple[Any, Any]:
+    """Import and return ``(HumanTools, AgentTools)`` from the SDK.
 
-    Guarded to tolerate the Phase 1 (INT-349) SDK landing on a different
-    timeline. When Phase 3 runs and the SDK is installed, this resolves; until
-    then, the registrar sees None and the helper logs a structured warning.
+    Raises ``ConfigError`` if the SDK package is not importable, so the
+    operator gets a clear startup error instead of a silent empty tool
+    surface. Phase 4 (INT-352) pinned ``thenvoi-sdk>=0.3.0`` as a hard
+    dependency; a missing import now means the install is broken, not a
+    development-timeline race with INT-349.
     """
     try:
-        from thenvoi.runtime.tools import HumanTools  # type: ignore[import-not-found]
-    except Exception as exc:  # pragma: no cover - import-time guard
-        logger.warning(
-            "HumanTools unavailable (SDK not installed or INT-349 not yet "
-            "merged); human tools will not be constructed: %s",
-            exc,
-        )
-        return None
+        from thenvoi.runtime.tools import AgentTools, HumanTools
+    except ImportError as exc:
+        raise ConfigError(
+            "thenvoi-sdk >= 0.3.0 is required but is not importable "
+            "(`from thenvoi.runtime.tools import HumanTools, AgentTools` "
+            f"failed: {exc}). Install/upgrade with "
+            "`pip install 'thenvoi-sdk>=0.3.0'` or `uv sync`."
+        ) from exc
+    return HumanTools, AgentTools
+
+
+def _try_import_human_tools() -> Any:
+    """Return SDK ``HumanTools`` class. Raises ConfigError if unavailable."""
+    HumanTools, _ = _require_sdk_tools()
     return HumanTools
 
 
 def _try_import_agent_tools() -> Any:
-    """Return SDK `AgentTools` class or None if unavailable."""
-    try:
-        from thenvoi.runtime.tools import AgentTools  # type: ignore[import-not-found]
-    except Exception as exc:  # pragma: no cover - import-time guard
-        logger.warning(
-            "AgentTools unavailable (SDK not installed); agent tools will not "
-            "be constructed: %s",
-            exc,
-        )
-        return None
+    """Return SDK ``AgentTools`` class. Raises ConfigError if unavailable."""
+    _, AgentTools = _require_sdk_tools()
     return AgentTools
 
 
@@ -148,11 +153,14 @@ def build_app_context(
     if agent_cred is not None:
         agent_rest = AsyncRestClient(api_key=agent_cred, base_url=base_url)
 
-    # Startup-construct `HumanTools` singleton if the SDK + human client are
-    # both available. AgentTools is per-room and constructed on demand.
+    # Startup-construct `HumanTools` singleton if the human client is
+    # available. AgentTools is per-room and constructed on demand.
+    # `_try_import_human_tools` raises ConfigError if the SDK is missing —
+    # we let that propagate so the operator sees a clear startup failure
+    # instead of a running-but-empty MCP server.
     human_tools_obj: Any = None
-    HumanToolsCls = _try_import_human_tools()
-    if HumanToolsCls is not None and human_rest is not None:
+    if human_rest is not None:
+        HumanToolsCls = _try_import_human_tools()
         try:
             human_tools_obj = HumanToolsCls(rest=human_rest)
         except Exception as exc:  # pragma: no cover - defensive
@@ -235,8 +243,10 @@ def get_agent_tools(ctx: AppContextType, room_id: str) -> Any:
     at the start of each request; within a single call, repeated
     `get_agent_tools(ctx, "r1")` returns the same object.
 
-    Returns None when the SDK isn't installed or when no agent credential is
-    configured.
+    Returns None when no agent credential is configured. Raises
+    ``ConfigError`` (via ``_try_import_agent_tools``) when the SDK is not
+    installed — that condition should have been caught at startup but this
+    keeps us honest if a tool is dispatched on a broken install.
     """
     app_ctx = get_app_context(ctx)
     if app_ctx.agent_rest is None:
@@ -251,8 +261,6 @@ def get_agent_tools(ctx: AppContextType, room_id: str) -> Any:
         return cached
 
     AgentToolsCls = _try_import_agent_tools()
-    if AgentToolsCls is None:
-        return None
 
     try:
         instance = AgentToolsCls(room_id=room_id, rest=app_ctx.agent_rest)

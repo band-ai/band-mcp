@@ -9,7 +9,12 @@ dependencies = [
     "mcp[cli]>=1.23.0",
     "pydantic-settings>=2.1.0",
     "thenvoi-client-rest>=0.0.4",
-    "uvicorn>=0.30.0",  # Required for SSE transport mode
+    # thenvoi-sdk provides HumanTools, AgentTools, and iter_tool_definitions
+    # (INT-349). The 0.3.0 line is the first release carrying the human-surface
+    # tools; the MCP registrar (INT-351) and this package's tool loader depend
+    # on it. Raise this floor when a new tool-definition contract lands.
+    "thenvoi-sdk>=0.3.0",
+    "uvicorn>=0.30.0", # Required for SSE transport mode
 ]
 
 [project.optional-dependencies]
@@ -53,6 +58,14 @@ thenvoi-mcp = "thenvoi_mcp.server:run"
 
 [tool.uv]
 package = true
+
+# LOCAL DEV OVERRIDE — remove once thenvoi-sdk >= 0.3.0 is published to PyPI.
+# INT-349 carries the HumanTools / iter_tool_definitions APIs this package
+# depends on; until that release is cut, `uv sync` resolves the SDK from the
+# sibling worktree. `[tool.uv.sources]` is not consumed by pip or by
+# publish-time resolution, so this stays a local-only override.
+[tool.uv.sources]
+thenvoi-sdk = { path = "../sdk-int-349" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -44,7 +44,7 @@ from pydantic import AliasChoices, BaseModel, Field, create_model
 from pydantic.fields import FieldInfo
 from pydantic.json_schema import SkipJsonSchema
 
-from thenvoi_mcp.config import Config
+from thenvoi_mcp.config import Config, ConfigError
 from thenvoi_mcp.shared import (
     AppContextType,
     get_agent_tools,
@@ -415,14 +415,16 @@ def register_tools(mcp: FastMCP, config: Config) -> None:
     """
     try:
         from thenvoi.runtime.tools import iter_tool_definitions
-    except Exception as exc:  # pragma: no cover - import-time guard
-        logger.warning(
-            "register_tools(): Thenvoi SDK not available — no tools will be "
-            "registered. Install thenvoi-sdk-python to serve any tool surface. "
-            "(%s)",
-            exc,
-        )
-        return
+    except ImportError as exc:
+        # Fail hard: a silent no-tool registration produces an MCP that looks
+        # healthy over the wire but serves nothing. Operators need an actionable
+        # error at startup, not a puzzling "zero tools" advertisement.
+        raise ConfigError(
+            "thenvoi-sdk >= 0.3.0 is required but is not importable "
+            "(`from thenvoi.runtime.tools import iter_tool_definitions` failed: "
+            f"{exc}). Install/upgrade with `pip install 'thenvoi-sdk>=0.3.0'` "
+            "or `uv sync`."
+        ) from exc
 
     include_contacts = "contacts" in config.tools
     include_memory = "memory" in config.tools

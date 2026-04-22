@@ -2,8 +2,8 @@
 
 Covers acceptance criterion #11 from INT-350: `get_human_tools` returns a
 singleton, `get_agent_tools` caches per-room, `reset_agent_tools_cache` clears
-the cache, and both helpers fail-soft (log + return None) when the SDK import
-fails.
+the cache. INT-352 hardened SDK import to fail-hard (ConfigError) rather than
+fail-soft — tests below reflect that.
 """
 
 from __future__ import annotations
@@ -12,7 +12,10 @@ import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from thenvoi_mcp import shared as shared_mod
+from thenvoi_mcp.config import ConfigError
 from thenvoi_mcp.shared import (
     AppContext,
     get_agent_tools,
@@ -130,16 +133,20 @@ def test_get_agent_tools_returns_none_without_agent_credential(caplog):
     assert any("no agent credential configured" in r.message for r in caplog.records)
 
 
-def test_get_agent_tools_returns_none_when_sdk_import_fails(monkeypatch, caplog):
+def test_get_agent_tools_raises_when_sdk_import_fails(monkeypatch):
     fake_agent_rest = MagicMock()
     app_ctx = AppContext(agent_rest=fake_agent_rest)
     ctx = _make_ctx(app_ctx)
 
-    # Simulate INT-349 not yet merged: the SDK import inside
-    # _try_import_agent_tools fails and the helper returns None.
-    monkeypatch.setattr(shared_mod, "_try_import_agent_tools", lambda: None)
+    # INT-352 change: a missing SDK is a configuration error, not a silent
+    # degradation. `_try_import_agent_tools` now raises ConfigError on failure;
+    # get_agent_tools propagates so the operator sees an actionable message.
+    def _raise() -> object:
+        raise ConfigError("thenvoi-sdk >= 0.3.0 is required")
 
-    result = get_agent_tools(ctx, "room_A")
-    assert result is None
+    monkeypatch.setattr(shared_mod, "_try_import_agent_tools", _raise)
+
+    with pytest.raises(ConfigError, match="thenvoi-sdk"):
+        get_agent_tools(ctx, "room_A")
     # Nothing should be cached when construction fails.
     assert app_ctx._agent_tools_cache == {}
