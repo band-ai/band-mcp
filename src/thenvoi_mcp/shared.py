@@ -69,6 +69,8 @@ class AppContext:
     # Legacy single-client path (kept for existing handwritten tools; removed
     # in Phase 4). Always populated so the existing `@mcp.tool()` handlers
     # that do `get_app_context(ctx).client.<something>` keep type-checking.
+    # TODO(INT-352): delete AppContext.client once handwritten tools under
+    # tools/agent/* and tools/human/* are removed.
     client: RestClient
 
     # Phase 2 additions.
@@ -81,6 +83,8 @@ class AppContext:
 
     # Per-request cache for AgentTools keyed by room_id. The registrar clears
     # this at the start of each tool call; see `get_agent_tools`.
+    # TODO(INT-351): call reset_agent_tools_cache(ctx) at the start of each
+    # tool invocation. Phase 2 plumbs the cache; Phase 3 owns the reset site.
     _agent_tools_cache: dict[str, Any] = field(default_factory=dict)
 
 
@@ -294,6 +298,10 @@ def reset_agent_tools_cache(ctx: AppContextType) -> None:
 
     Phase 3's registrar calls this at the start of each tool invocation so the
     cache's per-request semantics hold.
+
+    TODO(INT-351): wire this into the registrar's pre-invocation hook. Phase 2
+    exposes the reset but has no caller; without the Phase 3 wiring the cache
+    will leak across tool calls for the server's lifetime.
     """
     get_app_context(ctx)._agent_tools_cache.clear()
 
