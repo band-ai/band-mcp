@@ -12,10 +12,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Matching env vars: `THENVOI_USER_KEY` / `BAND_USER_KEY`, `THENVOI_AGENT_KEY` / `BAND_AGENT_KEY`, `THENVOI_MCP_ROOM_ID` / `BAND_MCP_ROOM_ID`, `THENVOI_MCP_SCOPE` / `BAND_MCP_SCOPE`, `THENVOI_MCP_TOOLS` / `BAND_MCP_TOOLS` (INT-350).
 - SDK-driven tool registrar: tool definitions now live in `thenvoi-sdk-python` and are consumed by `thenvoi-mcp` via `iter_tool_definitions()`. Single source of truth for both agent and human tool logic (INT-351).
 - Room pinning: `--room-id` binds the MCP server to a single chat/room; the room field is hidden from the advertised JSON schema and injected at call time (INT-351).
+- Runtime dependency on `thenvoi-sdk >= 0.3.0` (provides `HumanTools`, `AgentTools`, and `iter_tool_definitions`). Missing the SDK now raises `ConfigError` at startup with exit code 2 instead of silently serving zero tools (INT-352).
 
 ### Changed
 - **BREAKING**: Contact tools are no longer registered by default. Operators who relied on implicit contacts (either through `THENVOI_API_KEY` or the old MCP default) must pass `--tools contacts`. Memory tools remain opt-in via `--tools memory` as before.
 - `health_check` now uses the async REST clients on `AppContext` (`human_rest` preferred, falls back to `agent_rest`). The tool name and response shape are unchanged.
+
+### Migration — tool name changes
+
+**BREAKING** for downstream MCP consumers that pin tool names (Claude Desktop, Cursor, LangChain `tools=[...]` whitelists, etc.). Every surviving tool was prefixed with `thenvoi_`, several agent tools got semantic renames, and a block of agent-surface tools was removed outright.
+
+Agent tools removed (no replacement at the MCP layer):
+
+| Old tool | Why it went away |
+| --- | --- |
+| `get_agent_me` | Agent identity travels with the credential; remove from consumers. |
+| `list_agent_chats` | `AgentTools` is room-scoped; the MCP no longer enumerates rooms on the agent surface. |
+| `get_agent_chat` | Same as above. |
+| `get_agent_chat_context` | Context is fetched via the SDK's room-scoped helpers. |
+| `get_agent_next_message` | Agents receive messages via the SDK's websocket subscription, not a polling tool. |
+| `mark_agent_message_processing` | Lifecycle status handled by the SDK runtime. |
+| `mark_agent_message_processed` | Same as above. |
+| `mark_agent_message_failed` | Same as above. |
+
+Agent tools renamed:
+
+| Old tool | New tool |
+| --- | --- |
+| `create_agent_chat` | `thenvoi_create_chatroom` |
+| `create_agent_chat_message` | `thenvoi_send_message` |
+| `create_agent_chat_event` | `thenvoi_send_event` |
+| `list_agent_chat_participants` | `thenvoi_get_participants` |
+| `add_agent_chat_participant` | `thenvoi_add_participant` |
+| `remove_agent_chat_participant` | `thenvoi_remove_participant` |
+| `list_agent_peers` | `thenvoi_lookup_peers` |
+| `list_agent_contacts` | `thenvoi_list_contacts` |
+| `add_agent_contact` | `thenvoi_add_contact` |
+| `remove_agent_contact` | `thenvoi_remove_contact` |
+| `list_agent_contact_requests` | `thenvoi_list_contact_requests` |
+| `respond_to_agent_contact_request` | `thenvoi_respond_contact_request` |
+
+Human tools with semantic renames (beyond the `thenvoi_` prefix):
+
+| Old tool | New tool |
+| --- | --- |
+| `create_my_chat` | `thenvoi_create_my_chat_room` |
+| `get_my_chat` | `thenvoi_get_my_chat_room` |
+
+Human tools prefixed only (`thenvoi_<old_name>`):
+`list_my_agents`, `register_my_agent`, `list_my_chats`, `list_my_chat_messages`, `send_my_chat_message`, `list_my_chat_participants`, `add_my_chat_participant`, `remove_my_chat_participant`, `get_my_profile`, `update_my_profile`, `list_my_peers`.
+
+Contact tools on the human surface (opt-in via `--tools contacts`):
+`thenvoi_list_my_contacts`, `thenvoi_create_contact_request`, `thenvoi_list_received_contact_requests`, `thenvoi_list_sent_contact_requests`, `thenvoi_approve_contact_request`, `thenvoi_reject_contact_request`, `thenvoi_cancel_contact_request`, `thenvoi_resolve_handle`, `thenvoi_remove_my_contact`.
+
+Memory tools (opt-in via `--tools memory`):
+- Agent: `thenvoi_list_memories`, `thenvoi_store_memory`, `thenvoi_get_memory`, `thenvoi_supersede_memory`, `thenvoi_archive_memory`.
+- Human: `thenvoi_list_user_memories`, `thenvoi_get_user_memory`, `thenvoi_supersede_user_memory`, `thenvoi_archive_user_memory`, `thenvoi_restore_user_memory`, `thenvoi_delete_user_memory`.
 
 ### Removed
 - Handwritten FastMCP handlers under `src/thenvoi_mcp/tools/agent/` (8 files) and `src/thenvoi_mcp/tools/human/` (7 files). Replaced by the SDK-driven registrar (INT-352).
