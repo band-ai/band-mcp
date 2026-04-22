@@ -65,11 +65,16 @@ class MockRequestContext:
 
 
 class MockContext:
-    """Mock MCP Context for testing with mocked API client."""
+    """Mock MCP Context for testing with mocked API client.
+
+    The mock client is mapped onto both ``human_rest`` and ``agent_rest``
+    slots on the AppContext so tests that drive either surface see the same
+    shared mock.
+    """
 
     def __init__(self, client: Mock):
         self.request_context = MockRequestContext(
-            lifespan_context=AppContext(client=client)
+            lifespan_context=AppContext(human_rest=client, agent_rest=client)
         )
 
 
