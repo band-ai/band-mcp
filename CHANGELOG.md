@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- New CLI flags: `--user-key`, `--agent-key`, `--room-id`, `--scope`, `--tools` (INT-350).
+- Matching env vars: `THENVOI_USER_KEY` / `BAND_USER_KEY`, `THENVOI_AGENT_KEY` / `BAND_AGENT_KEY`, `THENVOI_MCP_ROOM_ID` / `BAND_MCP_ROOM_ID`, `THENVOI_MCP_SCOPE` / `BAND_MCP_SCOPE`, `THENVOI_MCP_TOOLS` / `BAND_MCP_TOOLS` (INT-350).
+- SDK-driven tool registrar: tool definitions now live in `thenvoi-sdk-python` and are consumed by `thenvoi-mcp` via `iter_tool_definitions()`. Single source of truth for both agent and human tool logic (INT-351).
+- Room pinning: `--room-id` binds the MCP server to a single chat/room; the room field is hidden from the advertised JSON schema and injected at call time (INT-351).
+
+### Changed
+- **BREAKING**: Contact tools are no longer registered by default. Operators who relied on implicit contacts (either through `THENVOI_API_KEY` or the old MCP default) must pass `--tools contacts`. Memory tools remain opt-in via `--tools memory` as before.
+- `health_check` now uses the async REST clients on `AppContext` (`human_rest` preferred, falls back to `agent_rest`). The tool name and response shape are unchanged.
+
+### Removed
+- Handwritten FastMCP handlers under `src/thenvoi_mcp/tools/agent/` (8 files) and `src/thenvoi_mcp/tools/human/` (7 files). Replaced by the SDK-driven registrar (INT-352).
+- Per-tool unit tests under `tests/` (13 files) — coverage subsumed by `tests/integration/test_forwarding.py` (Phase 3) and `tests/runtime/test_human_tools.py` in `thenvoi-sdk-python` (Phase 1) (INT-352).
+- `tests/integration/test_smoke.py`, `tests/integration/test_error_cases.py`, `tests/integration/test_full_workflow.py` and the `tests/conftest_integration.py` fixtures — live-API smoke suites against the deleted handwritten handlers. Registrar transport concerns are covered by `test_forwarding.py`; SDK method coverage lives in `thenvoi-sdk-python` (INT-352).
+- `AppContext.client` (legacy sync `RestClient`). Replaced by `AppContext.human_rest` / `.agent_rest` (INT-352).
+- `get_key_type`, `_choose_legacy_key_type`, `load_tools` in `server.py` — the legacy prefix-inference scaffolding that fed the handwritten handlers (INT-352).
+
+### Compatibility
+- `THENVOI_API_KEY` is still supported as a legacy fallback; the new `--user-key` / `--agent-key` flags take precedence when set. When `THENVOI_API_KEY` is the only credential, `config.scope` is rewritten from the key's capabilities so the advertised tool surface matches what the key can actually call.
+
 ## [1.2.0](https://github.com/thenvoi/thenvoi-mcp/compare/thenvoi-mcp-v1.1.1...thenvoi-mcp-v1.2.0) (2026-04-05)
 
 
