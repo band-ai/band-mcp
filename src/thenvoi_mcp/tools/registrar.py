@@ -57,15 +57,11 @@ from thenvoi_mcp.shared import (
 # Agent room-bound tools
 # ---------------------------------------------------------------------------
 #
-# These are the agent tools whose *current* MCP handler in
-# ``src/thenvoi_mcp/tools/agent/*.py`` takes ``chat_id`` as a kwarg (i.e. the
-# handler is room-scoped). Because ``AgentTools`` is constructor-scoped, the
-# Phase 1 SDK input models do not carry a room field — so the registrar has
-# to re-add it at the transport layer.
-#
-# Derived by grepping today's agent handlers for ``chat_id``. Kept as a
-# module-level constant so tests can assert on it and so Phase 4 (INT-352)
-# has an obvious pivot point for the handwritten-handler deletion.
+# These are the agent tools whose MCP handler takes ``chat_id`` as a kwarg
+# (i.e. the handler is room-scoped). Because ``AgentTools`` is constructor-
+# scoped, the SDK input models do not carry a room field — so the registrar
+# has to re-add it at the transport layer. Names match the tool names in
+# ``thenvoi-sdk-python``'s ``iter_tool_definitions(surface="agent")``.
 AGENT_ROOM_BOUND_TOOL_NAMES: frozenset[str] = frozenset(
     {
         "thenvoi_send_message",
@@ -416,18 +412,14 @@ def register_tools(mcp: FastMCP, config: Config) -> None:
     registration with an appropriate input schema (extended with chat_id
     for agent room-bound tools, schema-hidden pinned for pinned-mode
     room-bound tools on either surface).
-
-    Safe to call after the handwritten ``tools.agent.*`` / ``tools.human.*``
-    modules have been imported: SDK tool names are ``thenvoi_``-prefixed
-    and do not collide with the legacy handwritten handler names.
     """
     try:
         from thenvoi.runtime.tools import iter_tool_definitions
     except Exception as exc:  # pragma: no cover - import-time guard
         logger.warning(
-            "register_tools(): Thenvoi SDK not available — skipping SDK-driven "
-            "tool registration. Legacy handwritten handlers will still serve "
-            "traffic. (%s)",
+            "register_tools(): Thenvoi SDK not available — no tools will be "
+            "registered. Install thenvoi-sdk-python to serve any tool surface. "
+            "(%s)",
             exc,
         )
         return

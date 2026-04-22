@@ -206,8 +206,3 @@ def test_escape_hatch_user_legacy_key_maps_to_human_only(monkeypatch):
     legacy_human, legacy_agent = _legacy_key_capabilities("thnv_u_xyz")
     assert legacy_human is True
     assert legacy_agent is False
-
-    # And the server-side _choose_legacy_key_type resolves to "user" when
-    # scope is later set to ["human"].
-    config = Config(legacy_key="thnv_u_xyz", scope=["human"])
-    assert server_mod._choose_legacy_key_type(config) == "user"
