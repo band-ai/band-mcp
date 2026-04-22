@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import difflib
 from dataclasses import dataclass, field
-from typing import Literal, Mapping, Sequence
+from typing import Literal, Mapping, Sequence, cast
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -77,8 +77,18 @@ class Config:
     user_key: str | None = None
     agent_key: str | None = None
     room_id: str | None = None
-    scope: list[Scope] = field(default_factory=list)
-    tools: list[ToolGroup] = field(default_factory=list)
+    # Default honors ticket AC #6 ("default scope is ['agent']"). Instances
+    # produced directly via `Config(user_key="x")` in tests/fixtures get the
+    # same default as instances produced via `resolve_config({}, {})`.
+    # The `cast` is needed because `list(DEFAULT_SCOPE)` loses the Literal
+    # narrowing even though DEFAULT_SCOPE itself is typed list[Scope]; pyrefly
+    # otherwise flags this as list[str] being assigned to list[Scope].
+    scope: list[Scope] = field(
+        default_factory=lambda: cast("list[Scope]", list(DEFAULT_SCOPE))
+    )
+    tools: list[ToolGroup] = field(
+        default_factory=lambda: cast("list[ToolGroup]", list(DEFAULT_TOOLS))
+    )
     legacy_key: str | None = None
     warnings: list[ConfigWarning] = field(default_factory=list)
 

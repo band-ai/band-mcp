@@ -49,6 +49,22 @@ def test_config_warning_fields():
     assert fields == {"kind", "value", "did_you_mean", "message"}
 
 
+def test_config_default_scope_is_agent():
+    # AC #6: default scope is ["agent"]. A bare `Config()` must honor it so
+    # test fixtures and external callers don't silently fail validate().
+    cfg = Config()
+    assert cfg.scope == ["agent"]
+    assert cfg.tools == []
+
+
+def test_config_default_scope_isolated_between_instances():
+    # Guard against the classic mutable-default-argument bug.
+    a = Config()
+    b = Config()
+    a.scope.append("human")
+    assert b.scope == ["agent"]
+
+
 # ---------------------------------------------------------------------------
 # _suggest_value
 # ---------------------------------------------------------------------------
