@@ -1,23 +1,15 @@
 """Shared app context, logger, and FastMCP singleton for thenvoi-mcp.
 
-Phase 2 (INT-350) extends `AppContext` with dual REST clients:
-`human_rest` (bound to `user_key` or a human-capable legacy key) and
-`agent_rest` (bound to `agent_key` or an agent-capable legacy key). The
-single `client` attribute is retained during the transition so the
-currently-handwritten tools in `tools/agent/` and `tools/human/` keep
-working; Phase 4 (INT-352) deletes those and `client` goes with them.
+`AppContext` carries two async REST clients: `human_rest` (bound to
+`user_key` or a human-capable legacy key) and `agent_rest` (bound to
+`agent_key` or an agent-capable legacy key). Either may be None when the
+corresponding scope is not served by the current config.
 
 HumanTools / AgentTools coordination with INT-349
 -------------------------------------------------
-The SDK's `HumanTools` class lands in Phase 1 (INT-349) in `thenvoi-sdk-python`
-and is not yet available in this environment (the repo depends on
-`thenvoi-client-rest`, which is the Fern-generated REST client only).
-`get_human_tools()` / `get_agent_tools()` import `HumanTools` / `AgentTools`
-lazily and guard the import: if either import fails, the helper logs a WARN
-and returns `None`. Phase 3 (INT-351) is responsible for the registrar that
-calls these helpers; until INT-349 is merged and the SDK is installed, the
-helpers will fail closed with a structured log line rather than an import-time
-crash. This keeps Phase 2 mergeable without waiting for Phase 1.
+The SDK's `HumanTools` class lives in `thenvoi-sdk-python` (INT-349).
+`get_human_tools()` / `get_agent_tools()` import it lazily and guard the
+import: if either import fails, the helper logs a WARN and returns `None`.
 """
 
 from __future__ import annotations
@@ -33,7 +25,7 @@ from typing import Any
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
 from mcp.server.transport_security import TransportSecuritySettings
-from thenvoi_rest import AsyncRestClient, RestClient
+from thenvoi_rest import AsyncRestClient
 
 from thenvoi_mcp.config import Config, settings, resolve_credential_for_scope
 
@@ -49,31 +41,18 @@ logger = logging.getLogger(__name__)
 class AppContext:
     """Type-safe container for application dependencies.
 
-    `client` is the legacy single sync `RestClient` used by the handwritten
-    `tools/agent/*` and `tools/human/*` handlers. It is always populated
-    during the transition and goes away in Phase 4 (INT-352) once those
-    handlers are deleted.
-
-    `human_rest` / `agent_rest` are the new async clients used by Phase 3's
-    registrar. They may be None when the corresponding scope is not served by
-    the current config (e.g. a human-only deployment has no `agent_rest`).
+    `human_rest` / `agent_rest` are async REST clients used by the registrar.
+    Either may be None when the corresponding scope is not served by the
+    current config (e.g. a human-only deployment has no `agent_rest`).
 
     `human_tools` is the startup-constructed singleton returned by
     `get_human_tools()`. `AgentTools` is constructed per-room and cached in
     `_agent_tools_cache` by `get_agent_tools()`.
 
     `pinned_room_id`, `scope`, and `tools` carry the resolved Config values
-    forward so the registrar (Phase 3) doesn't need to re-resolve.
+    forward so the registrar doesn't need to re-resolve.
     """
 
-    # Legacy single-client path (kept for existing handwritten tools; removed
-    # in Phase 4). Always populated so the existing `@mcp.tool()` handlers
-    # that do `get_app_context(ctx).client.<something>` keep type-checking.
-    # TODO(INT-352): delete AppContext.client once handwritten tools under
-    # tools/agent/* and tools/human/* are removed.
-    client: RestClient
-
-    # Phase 2 additions.
     human_rest: AsyncRestClient | None = None
     agent_rest: AsyncRestClient | None = None
     human_tools: Any = None  # HumanTools | None; typed Any to avoid SDK hard-dep
@@ -83,8 +62,6 @@ class AppContext:
 
     # Per-request cache for AgentTools keyed by room_id. The registrar clears
     # this at the start of each tool call; see `get_agent_tools`.
-    # TODO(INT-351): call reset_agent_tools_cache(ctx) at the start of each
-    # tool invocation. Phase 2 plumbs the cache; Phase 3 owns the reset site.
     _agent_tools_cache: dict[str, Any] = field(default_factory=dict)
 
 
@@ -135,23 +112,30 @@ def build_app_context(
     never use.
 
     If `config` is None, we fall back to the legacy `THENVOI_API_KEY` path:
-    the sync `client` is populated from `settings.thenvoi_api_key` and the
-    new async slots stay None. This preserves current behavior for any caller
-    that has not yet moved to `resolve_config(...)`.
-
-    `AppContext.client` is always populated during the Phase 2 transition.
-    Phase 4 (INT-352) removes the legacy `client` slot once handwritten tool
-    handlers are deleted.
+    the async slots are populated from the single legacy key, tried against
+    both human and agent scopes based on the key prefix (server.run rewrites
+    `config.scope` to match). If `settings.thenvoi_api_key` is also unset,
+    the AppContext is returned with both slots None — tool calls will fail
+    at request time with a structured error.
     """
     base_url = settings.thenvoi_base_url
 
     if config is None:
-        # Legacy path: single sync client, no new slots.
-        client = RestClient(
-            api_key=settings.thenvoi_api_key,
-            base_url=base_url,
+        # Legacy path with no resolved Config. Build both clients from the
+        # legacy key if set; either can be None if the key can't serve that
+        # scope (e.g. thnv_u_* cannot serve agent calls).
+        legacy_key = settings.thenvoi_api_key or ""
+        human_rest = (
+            AsyncRestClient(api_key=legacy_key, base_url=base_url)
+            if legacy_key
+            else None
         )
-        return AppContext(client=client)
+        agent_rest = (
+            AsyncRestClient(api_key=legacy_key, base_url=base_url)
+            if legacy_key
+            else None
+        )
+        return AppContext(human_rest=human_rest, agent_rest=agent_rest)
 
     human_rest: AsyncRestClient | None = None
     agent_rest: AsyncRestClient | None = None
@@ -163,18 +147,6 @@ def build_app_context(
         human_rest = AsyncRestClient(api_key=human_cred, base_url=base_url)
     if agent_cred is not None:
         agent_rest = AsyncRestClient(api_key=agent_cred, base_url=base_url)
-
-    # Keep the legacy sync client alive during the transition so the existing
-    # `@mcp.tool()` decorated handlers in `tools/agent/*` and `tools/human/*`
-    # continue to work. Prefer the legacy key when set (matches previous
-    # behavior exactly), then fall back to either scope-specific key. If
-    # nothing at all is available, we still construct a client with an empty
-    # key — FastMCP/legacy tool calls will fail at request time with an auth
-    # error rather than at import/lifespan time.
-    legacy_for_client = (
-        config.legacy_key or human_cred or agent_cred or settings.thenvoi_api_key or ""
-    )
-    client = RestClient(api_key=legacy_for_client, base_url=base_url)
 
     # Startup-construct `HumanTools` singleton if the SDK + human client are
     # both available. AgentTools is per-room and constructed on demand.
@@ -188,7 +160,6 @@ def build_app_context(
             human_tools_obj = None
 
     return AppContext(
-        client=client,
         human_rest=human_rest,
         agent_rest=agent_rest,
         human_tools=human_tools_obj,
@@ -229,8 +200,8 @@ def get_app_context(ctx: AppContextType) -> AppContext:
 
     Usage in tools:
         app_ctx = get_app_context(ctx)
-        client = app_ctx.client          # legacy sync path
-        human_rest = app_ctx.human_rest  # new async path (Phase 3)
+        human_rest = app_ctx.human_rest  # async REST client for human scope
+        agent_rest = app_ctx.agent_rest  # async REST client for agent scope
     """
     return ctx.request_context.lifespan_context
 
@@ -296,12 +267,8 @@ def get_agent_tools(ctx: AppContextType, room_id: str) -> Any:
 def reset_agent_tools_cache(ctx: AppContextType) -> None:
     """Clear the per-request `AgentTools` cache.
 
-    Phase 3's registrar calls this at the start of each tool invocation so the
+    The registrar calls this at the start of each tool invocation so the
     cache's per-request semantics hold.
-
-    TODO(INT-351): wire this into the registrar's pre-invocation hook. Phase 2
-    exposes the reset but has no caller; without the Phase 3 wiring the cache
-    will leak across tool calls for the server's lifetime.
     """
     get_app_context(ctx)._agent_tools_cache.clear()
 

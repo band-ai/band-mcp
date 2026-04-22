@@ -34,8 +34,7 @@ def _make_ctx(app_context: AppContext) -> object:
 
 def test_get_human_tools_returns_singleton_across_calls():
     sentinel = object()
-    fake_client = MagicMock()
-    app_ctx = AppContext(client=fake_client, human_tools=sentinel)
+    app_ctx = AppContext(human_tools=sentinel)
     ctx = _make_ctx(app_ctx)
 
     first = get_human_tools(ctx)
@@ -46,8 +45,7 @@ def test_get_human_tools_returns_singleton_across_calls():
 
 
 def test_get_human_tools_returns_none_and_warns_when_unavailable(caplog):
-    fake_client = MagicMock()
-    app_ctx = AppContext(client=fake_client, human_tools=None)
+    app_ctx = AppContext(human_tools=None)
     ctx = _make_ctx(app_ctx)
 
     with caplog.at_level(logging.WARNING, logger="thenvoi_mcp.shared"):
@@ -62,9 +60,8 @@ def test_get_human_tools_returns_none_and_warns_when_unavailable(caplog):
 
 
 def test_get_agent_tools_caches_per_room(monkeypatch):
-    fake_client = MagicMock()
     fake_agent_rest = MagicMock()
-    app_ctx = AppContext(client=fake_client, agent_rest=fake_agent_rest)
+    app_ctx = AppContext(agent_rest=fake_agent_rest)
     ctx = _make_ctx(app_ctx)
 
     constructed: list[str] = []
@@ -84,9 +81,8 @@ def test_get_agent_tools_caches_per_room(monkeypatch):
 
 
 def test_get_agent_tools_returns_distinct_instance_per_room(monkeypatch):
-    fake_client = MagicMock()
     fake_agent_rest = MagicMock()
-    app_ctx = AppContext(client=fake_client, agent_rest=fake_agent_rest)
+    app_ctx = AppContext(agent_rest=fake_agent_rest)
     ctx = _make_ctx(app_ctx)
 
     class FakeAgentTools:
@@ -103,9 +99,8 @@ def test_get_agent_tools_returns_distinct_instance_per_room(monkeypatch):
 
 
 def test_reset_agent_tools_cache_clears_entries(monkeypatch):
-    fake_client = MagicMock()
     fake_agent_rest = MagicMock()
-    app_ctx = AppContext(client=fake_client, agent_rest=fake_agent_rest)
+    app_ctx = AppContext(agent_rest=fake_agent_rest)
     ctx = _make_ctx(app_ctx)
 
     class FakeAgentTools:
@@ -126,8 +121,7 @@ def test_reset_agent_tools_cache_clears_entries(monkeypatch):
 
 
 def test_get_agent_tools_returns_none_without_agent_credential(caplog):
-    fake_client = MagicMock()
-    app_ctx = AppContext(client=fake_client, agent_rest=None)
+    app_ctx = AppContext(agent_rest=None)
     ctx = _make_ctx(app_ctx)
 
     with caplog.at_level(logging.WARNING, logger="thenvoi_mcp.shared"):
@@ -137,9 +131,8 @@ def test_get_agent_tools_returns_none_without_agent_credential(caplog):
 
 
 def test_get_agent_tools_returns_none_when_sdk_import_fails(monkeypatch, caplog):
-    fake_client = MagicMock()
     fake_agent_rest = MagicMock()
-    app_ctx = AppContext(client=fake_client, agent_rest=fake_agent_rest)
+    app_ctx = AppContext(agent_rest=fake_agent_rest)
     ctx = _make_ctx(app_ctx)
 
     # Simulate INT-349 not yet merged: the SDK import inside
