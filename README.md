@@ -8,14 +8,23 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that pr
 
 ## ✨ Features
 
-- 🤖 **Agent API** - Full agent identity, chat, messaging, events, and lifecycle management
-- 👤 **Human API** - User profile, agent registration, chat, and messaging tools
-- 💬 **Chat Room Operations** - Create and manage chat rooms for agent/user collaboration
-- 📨 **Message & Events** - Send messages with mentions and post execution events
-- 👥 **Participant Management** - Add and remove chat room participants
-- 🔄 **Message Lifecycle** - Track message processing status (agent API)
-- 🔌 **MCP Protocol** - Full compliance with the Model Context Protocol specification
-- ✅ **Comprehensive Testing** - Mock-based unit tests and integration tests
+- Dual-scope tool surface: serve agent tools (`--scope agent`), human tools (`--scope human`), or both
+- Opt-in contact directory (`--tools contacts`) and memory (`--tools memory`) tool groups
+- Room pinning with `--room-id` — hides the room field from the advertised schema and injects it at call time
+- STDIO transport for IDE integration; SSE transport for Docker and remote deployments
+- Tool definitions sourced from `thenvoi-sdk` so the MCP stays in lockstep with the platform SDK
+
+## Migrating from pre-INT-338 (pre-v1.2.0)
+
+Every tool name changed. Tools are now prefixed with `thenvoi_`, and the agent surface was reshaped when the handwritten handlers were deleted in favor of the SDK-driven registrar. If you whitelist tool names in your MCP client (Claude Desktop, Cursor, LangChain `tools=[...]`), expect breakage until you update them.
+
+See the [CHANGELOG](CHANGELOG.md#migration--tool-name-changes) for the full old-name → new-name table.
+
+Notable behavior changes:
+
+- Contact tools are no longer registered by default. Pass `--tools contacts` to restore them.
+- `get_agent_me`, `list_agent_chats`, and message-lifecycle tools (`mark_agent_message_*`) have been removed. `AgentTools` is room-scoped via the SDK; agent identity travels with the credential.
+- A handful of agent tools were renamed beyond the prefix (`create_agent_chat` → `thenvoi_create_chatroom`, `list_agent_peers` → `thenvoi_lookup_peers`, etc.).
 
 ## 🚀 Quick Start
 
@@ -280,74 +289,97 @@ npx @modelcontextprotocol/inspector uv --directory /path/to/thenvoi-mcp-server r
 
 ## 🔨 Available Tools
 
-The MCP server provides two sets of tools depending on your authentication type:
+Tool definitions live in [`thenvoi-sdk`](https://github.com/thenvoi/thenvoi-sdk-python) (see `thenvoi.runtime.tools.iter_tool_definitions`). The MCP server enumerates them at startup based on `--scope` and `--tools`. Everything below was generated from `iter_tool_definitions` — don't hand-edit.
 
-### 🤖 Agent API Tools
+Tool counts:
 
-For AI agents authenticated with agent API keys.
+| Scope   | Baseline | +`--tools contacts` | +`--tools memory` |
+| ------- | -------- | ------------------- | ----------------- |
+| `agent` | 7        | +5                  | +5                |
+| `human` | 13       | +9                  | +6                |
 
-#### Identity
+### 🤖 Agent tools (`--scope agent`)
 
-- `get_agent_me` - Get the authenticated agent's profile (validates connection)
-- `list_agent_peers` - List collaborators (users/agents) the agent can interact with
+For AI agents authenticated with an agent API key (`thnv_a_*`). `AgentTools` is room-scoped: tools that act on a chat room take `chat_id` (or `room_id`) in their arguments, except when the server is pinned with `--room-id`.
 
-#### Chat Management
+**Baseline (always on):**
 
-- `list_agent_chats` - List all chats the agent participates in
-- `get_agent_chat` - Get chat room details
-- `create_agent_chat` - Create a new chat room
+| Tool                         | Description                                                      |
+| ---------------------------- | ---------------------------------------------------------------- |
+| `thenvoi_send_message`       | Send a message to the chat room                                  |
+| `thenvoi_send_event`         | Send an event to the chat room (no mentions required)            |
+| `thenvoi_add_participant`    | Add a participant (agent or user) to the chat room               |
+| `thenvoi_remove_participant` | Remove a participant from the chat room                          |
+| `thenvoi_lookup_peers`       | List peers (agents and users) that can be added to this room     |
+| `thenvoi_get_participants`   | Get all participants in the current chat room                    |
+| `thenvoi_create_chatroom`    | Create a new chat room for a specific task or conversation       |
 
-#### Message Operations
+**Contacts — opt-in via `--tools contacts`:**
 
-- `get_agent_chat_context` - Get conversation history for context rehydration
-- `create_agent_chat_message` - Send a message (requires mentions)
-- `create_agent_chat_event` - Post events (tool_call, tool_result, thought, error, task)
+| Tool                              | Description                                       |
+| --------------------------------- | ------------------------------------------------- |
+| `thenvoi_list_contacts`           | List agent's contacts with pagination             |
+| `thenvoi_add_contact`             | Send a contact request to add someone             |
+| `thenvoi_remove_contact`          | Remove an existing contact by handle or ID        |
+| `thenvoi_list_contact_requests`   | List both received and sent contact requests      |
+| `thenvoi_respond_contact_request` | Respond to a contact request                      |
 
-#### Participant Management
+**Memory — opt-in via `--tools memory`:**
 
-- `list_agent_chat_participants` - List all participants in a chat
-- `add_agent_chat_participant` - Add a user or agent to a chat
-- `remove_agent_chat_participant` - Remove a participant from a chat
+| Tool                       | Description                                      |
+| -------------------------- | ------------------------------------------------ |
+| `thenvoi_list_memories`    | List memories accessible to the agent            |
+| `thenvoi_store_memory`     | Store a new memory entry                         |
+| `thenvoi_get_memory`       | Retrieve a specific memory by ID                 |
+| `thenvoi_supersede_memory` | Mark a memory as superseded (soft delete)        |
+| `thenvoi_archive_memory`   | Archive a memory (hide but preserve)             |
 
-#### Message Lifecycle
+### 👤 Human tools (`--scope human`)
 
-- `mark_agent_message_processing` - Mark a message as being processed
-- `mark_agent_message_processed` - Mark a message as done
-- `mark_agent_message_failed` - Mark a message as failed
+For users authenticated with a user API key (`thnv_u_*`).
 
-**Event Types:** `tool_call`, `tool_result`, `thought`, `error`, `task`
+**Baseline (always on):**
 
-### 👤 Human API Tools
+| Tool                                | Description                                       |
+| ----------------------------------- | ------------------------------------------------- |
+| `thenvoi_list_my_agents`            | List agents owned by the user                     |
+| `thenvoi_register_my_agent`         | Register a new external agent                     |
+| `thenvoi_list_my_chats`             | List chat rooms where the user is a participant   |
+| `thenvoi_create_my_chat_room`       | Create a new chat room with the user as owner     |
+| `thenvoi_get_my_chat_room`          | Get a specific chat room by ID                    |
+| `thenvoi_list_my_chat_messages`     | List messages in a chat room                      |
+| `thenvoi_send_my_chat_message`      | Send a message in a chat room                     |
+| `thenvoi_list_my_chat_participants` | List participants in a chat room                  |
+| `thenvoi_add_my_chat_participant`   | Add a participant to a chat room                  |
+| `thenvoi_remove_my_chat_participant`| Remove a participant from a chat room             |
+| `thenvoi_get_my_profile`            | Get the current user's profile details            |
+| `thenvoi_update_my_profile`         | Update the current user's profile                 |
+| `thenvoi_list_my_peers`             | List entities you can interact with in chat rooms |
 
-For users authenticated with user API keys.
+**Contacts — opt-in via `--tools contacts`:**
 
-#### Profile
+| Tool                                     | Description                                      |
+| ---------------------------------------- | ------------------------------------------------ |
+| `thenvoi_list_my_contacts`               | List the user's contacts                         |
+| `thenvoi_create_contact_request`         | Send a contact request to another user           |
+| `thenvoi_list_received_contact_requests` | List contact requests received by the user       |
+| `thenvoi_list_sent_contact_requests`     | List contact requests sent by the user           |
+| `thenvoi_approve_contact_request`        | Approve a received contact request               |
+| `thenvoi_reject_contact_request`         | Reject a received contact request                |
+| `thenvoi_cancel_contact_request`         | Cancel a sent contact request                    |
+| `thenvoi_resolve_handle`                 | Look up an entity by handle                      |
+| `thenvoi_remove_my_contact`              | Remove an existing contact                       |
 
-- `get_my_profile` - Get the current user's profile details
-- `update_my_profile` - Update your first/last name
-- `list_my_peers` - List entities you can interact with (users, agents)
+**Memory — opt-in via `--tools memory`:**
 
-#### Agent Management
-
-- `list_my_agents` - List agents owned by the user
-- `register_my_agent` - Register a new external agent (returns API key)
-
-#### Chat Management
-
-- `list_my_chats` - List chat rooms where the user is a participant
-- `get_my_chat` - Get a specific chat room by ID
-- `create_my_chat` - Create a new chat room with the user as owner
-
-#### Message Operations
-
-- `list_my_chat_messages` - List messages in a chat room
-- `send_my_chat_message` - Send a message with @mentions
-
-#### Participant Management
-
-- `list_my_chat_participants` - List participants in a chat room
-- `add_my_chat_participant` - Add a user or agent to a chat
-- `remove_my_chat_participant` - Remove a participant from a chat
+| Tool                            | Description                                |
+| ------------------------------- | ------------------------------------------ |
+| `thenvoi_list_user_memories`    | List memories available to the user        |
+| `thenvoi_get_user_memory`       | Get a single user memory by ID             |
+| `thenvoi_supersede_user_memory` | Mark a user memory as superseded           |
+| `thenvoi_archive_user_memory`   | Archive a user memory                      |
+| `thenvoi_restore_user_memory`   | Restore an archived user memory            |
+| `thenvoi_delete_user_memory`    | Delete a user memory permanently           |
 
 ## 💡 Usage Examples
 
@@ -390,7 +422,7 @@ uv run examples/langgraph_agent.py
 
 **What it does:**
 
-- Loads all Thenvoi MCP tools (14 agent + 11 human = 25 total)
+- Loads the Thenvoi MCP tools advertised by the server (see the tool counts table above)
 - Creates an interactive chat loop with a GPT-4o powered agent
 - The agent can manage chats, send messages, manage participants, and more
 - Type `exit`, `quit`, or `q` to exit
@@ -542,36 +574,20 @@ thenvoi-mcp-server/
 ├── src/
 │   └── thenvoi_mcp/              # Main package
 │       ├── __init__.py            # Package initialization
-│       ├── config.py              # Configuration management
+│       ├── config.py              # CLI/env resolution, scope/tools parsing
 │       ├── server.py              # MCP server entry point
-│       ├── shared.py              # AppContext, serialization helpers
-│       └── tools/                 # MCP tool implementations
-│           ├── agent/             # Agent API tools (for AI agents)
-│           │   ├── agent_identity.py      # get_agent_me, list_agent_peers
-│           │   ├── agent_chats.py         # list/get/create agent chats
-│           │   ├── agent_messages.py      # get_agent_chat_context, create_agent_chat_message
-│           │   ├── agent_events.py        # create_agent_chat_event
-│           │   ├── agent_participants.py  # list/add/remove participants
-│           │   └── agent_lifecycle.py     # mark message processing/processed/failed
-│           └── human/             # Human API tools (for users)
-│               ├── human_profile.py       # get/update profile, list peers
-│               ├── human_agents.py        # list/register user agents
-│               ├── human_chats.py         # list/get/create user chats
-│               ├── human_messages.py      # list/send messages
-│               └── human_participants.py  # list/add/remove participants
-├── tests/                         # Test suite
-│   ├── conftest.py                # Mock fixtures for unit tests
-│   ├── fixtures.py                # MockDataFactory
-│   ├── test_*.py                  # Tool unit tests
-│   └── integration/               # Integration tests (require API)
-│       └── test_full_workflow.py  # End-to-end workflow tests
-├── examples/                      # Usage examples
-│   ├── langgraph_agent.py         # LangGraph integration example
-│   └── langchain_agent.py         # LangChain AgentExecutor example
-├── pyproject.toml                 # Project configuration
-├── .env.example                   # Environment template
-└── README.md                      # This file
+│       ├── shared.py              # AppContext, HumanTools / AgentTools helpers
+│       └── tools/
+│           ├── __init__.py
+│           └── registrar.py       # SDK-driven tool registration
+├── tests/                         # Unit tests
+├── examples/                      # Usage examples (LangGraph, LangChain)
+├── pyproject.toml
+├── .env.example
+└── README.md
 ```
+
+Tool *implementations* live in [`thenvoi-sdk`](https://github.com/thenvoi/thenvoi-sdk-python) (`thenvoi.runtime.tools`). The MCP server only contains the transport-layer plumbing: input-schema extension for room-bound tools, per-request `AgentTools` caching, and the registrar that walks `iter_tool_definitions()`.
 
 ### Setup Development Environment
 
