@@ -40,7 +40,7 @@ import json
 from typing import Annotated, Any, Callable
 
 from mcp.server.fastmcp import FastMCP
-from pydantic import AliasChoices, BaseModel, Field, create_model
+from pydantic import AliasChoices, BaseModel, Field, ValidationError, create_model
 from pydantic.fields import FieldInfo
 from pydantic.json_schema import SkipJsonSchema
 
@@ -275,12 +275,15 @@ async def _invoke(
     # field is populated from the pin even though it is hidden from the
     # advertised schema.
     if pinned_room_id is not None and (is_agent_room_bound or is_human_room_bound):
-        kwargs.setdefault("chat_id", pinned_room_id)
+        kwargs["chat_id"] = pinned_room_id
 
     try:
         validated = input_model.model_validate(kwargs)
-    except Exception as exc:
-        raise ValueError(f"Invalid arguments for {tool_name}: {exc}") from exc
+    except ValidationError as exc:
+        errors = "; ".join(
+            f"{err['loc'][0]}: {err['msg']}" for err in exc.errors()
+        )
+        raise ValueError(f"Invalid arguments for {tool_name}: {errors}") from exc
 
     call_kwargs = validated.model_dump(exclude_none=True, by_alias=False)
 
@@ -294,17 +297,12 @@ async def _invoke(
                 )
             tools_instance = get_agent_tools(ctx, chat_id)
         else:
-            # Room-less agent tool (e.g. ``thenvoi_create_chatroom``). The
-            # SDK's ``AgentTools`` is constructor-scoped, but such tools
-            # only touch ``self.rest`` — we can safely construct with the
-            # pinned room id (or an empty placeholder if none is set) and
-            # dispatch.
-            tools_instance = get_agent_tools(ctx, pinned_room_id or "")
+            tools_instance = get_agent_tools(ctx, pinned_room_id)
     else:
         tools_instance = get_human_tools(ctx)
 
     if tools_instance is None:
-        raise RuntimeError(
+        raise ValueError(
             f"{tool_name}: {surface} tools not available (SDK not installed or "
             "no credential configured for this scope)"
         )
