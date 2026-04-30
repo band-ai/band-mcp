@@ -32,6 +32,7 @@ from thenvoi_mcp.shared import (
     mcp,
     set_pending_config,
 )
+from thenvoi_mcp.tools.registrar import register_tools
 
 
 def get_key_type(key: str) -> str:
@@ -301,6 +302,14 @@ def run() -> None:
     else:
         key_type = get_key_type(settings.thenvoi_api_key)
     load_tools(key_type)
+
+    # Phase 3 (INT-351): SDK-driven registrar. Registers every
+    # ``iter_tool_definitions(surface=s, ...)`` entry for each scope in
+    # ``config.scope``. SDK tool names are ``thenvoi_``-prefixed and do not
+    # collide with the legacy handwritten handler names above — both surfaces
+    # coexist during the Phase 3 → Phase 4 transition. Phase 4 (INT-352)
+    # deletes ``load_tools`` and the handwritten handlers.
+    register_tools(mcp, config)
 
     # Determine transport mode (CLI args override env vars)
     transport: Literal["stdio", "sse"] = args.transport or settings.transport

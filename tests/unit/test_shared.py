@@ -67,10 +67,10 @@ def test_get_agent_tools_caches_per_room(monkeypatch):
     app_ctx = AppContext(client=fake_client, agent_rest=fake_agent_rest)
     ctx = _make_ctx(app_ctx)
 
-    constructed: list[str] = []
+    constructed: list[str | None] = []
 
     class FakeAgentTools:
-        def __init__(self, room_id: str, rest: object):
+        def __init__(self, room_id: str | None, rest: object):
             self.room_id = room_id
             self.rest = rest
             constructed.append(room_id)
@@ -90,7 +90,7 @@ def test_get_agent_tools_returns_distinct_instance_per_room(monkeypatch):
     ctx = _make_ctx(app_ctx)
 
     class FakeAgentTools:
-        def __init__(self, room_id: str, rest: object):
+        def __init__(self, room_id: str | None, rest: object):
             self.room_id = room_id
 
     monkeypatch.setattr(shared_mod, "_try_import_agent_tools", lambda: FakeAgentTools)
@@ -102,6 +102,24 @@ def test_get_agent_tools_returns_distinct_instance_per_room(monkeypatch):
     assert b.room_id == "room_B"
 
 
+def test_get_agent_tools_accepts_none_for_room_less_agent_tools(monkeypatch):
+    fake_client = MagicMock()
+    fake_agent_rest = MagicMock()
+    app_ctx = AppContext(client=fake_client, agent_rest=fake_agent_rest)
+    ctx = _make_ctx(app_ctx)
+
+    class FakeAgentTools:
+        def __init__(self, room_id: str | None, rest: object):
+            self.room_id = room_id
+
+    monkeypatch.setattr(shared_mod, "_try_import_agent_tools", lambda: FakeAgentTools)
+
+    result = get_agent_tools(ctx, None)
+
+    assert result.room_id is None
+    assert app_ctx._agent_tools_cache == {None: result}
+
+
 def test_reset_agent_tools_cache_clears_entries(monkeypatch):
     fake_client = MagicMock()
     fake_agent_rest = MagicMock()
@@ -109,7 +127,7 @@ def test_reset_agent_tools_cache_clears_entries(monkeypatch):
     ctx = _make_ctx(app_ctx)
 
     class FakeAgentTools:
-        def __init__(self, room_id: str, rest: object):
+        def __init__(self, room_id: str | None, rest: object):
             self.room_id = room_id
 
     monkeypatch.setattr(shared_mod, "_try_import_agent_tools", lambda: FakeAgentTools)
