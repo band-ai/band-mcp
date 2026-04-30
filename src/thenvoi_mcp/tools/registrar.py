@@ -280,9 +280,7 @@ async def _invoke(
     try:
         validated = input_model.model_validate(kwargs)
     except ValidationError as exc:
-        errors = "; ".join(
-            f"{err['loc'][0]}: {err['msg']}" for err in exc.errors()
-        )
+        errors = "; ".join(f"{err['loc'][0]}: {err['msg']}" for err in exc.errors())
         raise ValueError(f"Invalid arguments for {tool_name}: {errors}") from exc
 
     call_kwargs = validated.model_dump(exclude_none=True, by_alias=False)
@@ -420,7 +418,7 @@ def register_tools(mcp: FastMCP, config: Config) -> None:
     and do not collide with the legacy handwritten handler names.
     """
     try:
-        from thenvoi.runtime.tools import iter_tool_definitions
+        from thenvoi.runtime.tools import iter_tool_definitions  # type: ignore[import-not-found]
     except Exception as exc:  # pragma: no cover - import-time guard
         logger.warning(
             "register_tools(): Thenvoi SDK not available — skipping SDK-driven "
