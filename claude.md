@@ -82,4 +82,4 @@ Wildcard port matching is supported: `"localhost:*"` matches `localhost:8000`, `
 
 ## Git Workflow
 
-- Default branch: `develop` (PRs target here)
+- Default branch: `dev` (PRs target here)
