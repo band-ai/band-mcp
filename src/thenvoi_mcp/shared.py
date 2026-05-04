@@ -65,9 +65,10 @@ class AppContext:
     scope: list[str] = field(default_factory=list)
     tools: list[str] = field(default_factory=list)
 
-    # Per-request cache for AgentTools keyed by room_id. The registrar clears
-    # this at the start of each tool call; see `get_agent_tools`.
-    _agent_tools_cache: dict[str, Any] = field(default_factory=dict)
+    # Per-request cache for AgentTools keyed by room_id. Room-less agent tools
+    # use None as the cache key. The registrar clears this at the start of each
+    # tool call; see `get_agent_tools`.
+    _agent_tools_cache: dict[str | None, Any] = field(default_factory=dict)
 
 
 AppContextType = Context[ServerSession, AppContext, None]
@@ -234,14 +235,15 @@ def get_human_tools(ctx: AppContextType) -> Any:
     return app_ctx.human_tools
 
 
-def get_agent_tools(ctx: AppContextType, room_id: str) -> Any:
+def get_agent_tools(ctx: AppContextType, room_id: str | None) -> Any:
     """Return an `AgentTools` instance scoped to `room_id`.
 
     Per-request cache: Phase 3 can call this multiple times in the same tool
     invocation (participant-resolution paths walk back to the room) and must
     not construct twice. The registrar is responsible for clearing the cache
     at the start of each request; within a single call, repeated
-    `get_agent_tools(ctx, "r1")` returns the same object.
+    `get_agent_tools(ctx, "r1")` returns the same object. Room-less agent tools
+    pass None through to AgentTools.
 
     Returns None when no agent credential is configured. Raises
     ``ConfigError`` (via ``_try_import_agent_tools``) when the SDK is not

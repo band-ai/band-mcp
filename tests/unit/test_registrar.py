@@ -315,6 +315,28 @@ async def test_unpinned_agent_handler_accepts_room_id_alias(
     assert "ok" in out
 
 
+async def test_validation_errors_report_fields() -> None:
+    definition = TOOL_DEFINITIONS["thenvoi_send_message"]
+    extended = _extend_with_chat_id(definition.input_model, None)
+
+    from thenvoi_mcp.tools.registrar import _invoke
+
+    with pytest.raises(ValueError, match="Invalid arguments") as exc_info:
+        await _invoke(
+            surface="agent",
+            tool_name=definition.name,
+            method_name=definition.method_name,
+            input_model=extended,
+            pinned_room_id=None,
+            is_agent_room_bound=True,
+            is_human_room_bound=False,
+            ctx=MagicMock(),
+            kwargs={"mentions": ["@x"], "room_id": "r_alias"},
+        )
+
+    assert "content" in str(exc_info.value)
+
+
 # ---------------------------------------------------------------------------
 # Pinned agent handler: schema + dispatch
 # ---------------------------------------------------------------------------
@@ -358,6 +380,37 @@ async def test_pinned_agent_handler_injects_room_id(
     await handler(ctx=ctx, content="hi", mentions=["@x"])
 
     get_agent_tools_spy.assert_called_once_with(ctx, "r_pinned")
+
+
+async def test_pinned_agent_handler_overrides_caller_chat_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_agent_tools = MagicMock()
+    fake_agent_tools.send_message = AsyncMock(return_value={"ok": True})
+    get_agent_tools_spy = MagicMock(return_value=fake_agent_tools)
+    monkeypatch.setattr(registrar, "get_agent_tools", get_agent_tools_spy)
+    monkeypatch.setattr(registrar, "reset_agent_tools_cache", MagicMock())
+    monkeypatch.setattr(registrar, "get_human_tools", MagicMock())
+
+    definition = TOOL_DEFINITIONS["thenvoi_send_message"]
+    pinned = _extend_with_chat_id(definition.input_model, "r_pinned")
+
+    from thenvoi_mcp.tools.registrar import _invoke
+
+    await _invoke(
+        surface="agent",
+        tool_name=definition.name,
+        method_name=definition.method_name,
+        input_model=pinned,
+        pinned_room_id="r_pinned",
+        is_agent_room_bound=True,
+        is_human_room_bound=False,
+        ctx=MagicMock(),
+        kwargs={"content": "hi", "mentions": ["@x"], "chat_id": "r_user"},
+    )
+
+    get_agent_tools_spy.assert_called_once()
+    assert get_agent_tools_spy.call_args.args[1] == "r_pinned"
 
 
 # ---------------------------------------------------------------------------

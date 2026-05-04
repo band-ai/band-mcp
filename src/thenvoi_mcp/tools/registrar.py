@@ -40,7 +40,7 @@ import json
 from typing import Annotated, Any, Callable
 
 from mcp.server.fastmcp import FastMCP
-from pydantic import AliasChoices, BaseModel, Field, create_model
+from pydantic import AliasChoices, BaseModel, Field, ValidationError, create_model
 from pydantic.fields import FieldInfo
 from pydantic.json_schema import SkipJsonSchema
 
@@ -271,12 +271,13 @@ async def _invoke(
     # field is populated from the pin even though it is hidden from the
     # advertised schema.
     if pinned_room_id is not None and (is_agent_room_bound or is_human_room_bound):
-        kwargs.setdefault("chat_id", pinned_room_id)
+        kwargs["chat_id"] = pinned_room_id
 
     try:
         validated = input_model.model_validate(kwargs)
-    except Exception as exc:
-        raise ValueError(f"Invalid arguments for {tool_name}: {exc}") from exc
+    except ValidationError as exc:
+        errors = "; ".join(f"{err['loc'][0]}: {err['msg']}" for err in exc.errors())
+        raise ValueError(f"Invalid arguments for {tool_name}: {errors}") from exc
 
     call_kwargs = validated.model_dump(exclude_none=True, by_alias=False)
 

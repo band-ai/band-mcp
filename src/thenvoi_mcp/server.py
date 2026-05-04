@@ -34,6 +34,7 @@ from thenvoi_mcp.shared import (
 from thenvoi_mcp.tools.registrar import register_tools
 
 
+
 @mcp.tool()
 async def health_check(ctx: AppContextType) -> str:
     """Test MCP server and API connectivity."""
@@ -265,6 +266,14 @@ def run() -> None:
         # operators see the actionable message instead of a traceback.
         logger.error("Configuration error: %s", exc)
         raise SystemExit(2) from exc
+
+    # Phase 3 (INT-351): SDK-driven registrar. Registers every
+    # ``iter_tool_definitions(surface=s, ...)`` entry for each scope in
+    # ``config.scope``. SDK tool names are ``thenvoi_``-prefixed and do not
+    # collide with the legacy handwritten handler names above — both surfaces
+    # coexist during the Phase 3 → Phase 4 transition. Phase 4 (INT-352)
+    # deletes ``load_tools`` and the handwritten handlers.
+    register_tools(mcp, config)
 
     # Determine transport mode (CLI args override env vars)
     transport: Literal["stdio", "sse"] = args.transport or settings.transport
