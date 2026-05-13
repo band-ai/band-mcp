@@ -14,11 +14,15 @@ from __future__ import annotations
 
 import argparse
 import os
-from typing import Literal
+from dataclasses import replace
+from typing import Literal, Sequence
 
 from thenvoi_mcp import __version__
 from thenvoi_mcp.config import (
     Config,
+    AGENT_KEY_PREFIXES,
+    LEGACY_KEY_PREFIXES,
+    USER_KEY_PREFIXES,
     ConfigError,
     _legacy_key_capabilities,
     resolve_config,
@@ -39,15 +43,15 @@ def get_key_type(key: str) -> str:
     """Get API key type from prefix.
 
     Key formats:
-    - User keys: thnv_u_<timestamp>_<random>
-    - Agent keys: thnv_a_<timestamp>_<random>
-    - Legacy keys: thnv_<timestamp>_<random> (loads all tools)
+    - User keys: thnv_u_<timestamp>_<random> or band_u_<...>
+    - Agent keys: thnv_a_<timestamp>_<random> or band_a_<...>
+    - Legacy keys: thnv_<timestamp>_<random> or band_<...> (loads all tools)
     """
-    if key.startswith("thnv_u_"):
+    if key.startswith(USER_KEY_PREFIXES):
         return "user"
-    elif key.startswith("thnv_a_"):
+    if key.startswith(AGENT_KEY_PREFIXES):
         return "agent"
-    elif key.startswith("thnv_"):
+    if key.startswith(LEGACY_KEY_PREFIXES):
         return "legacy"
     return "unknown"
 
@@ -84,26 +88,31 @@ def load_tools(key_type: str) -> None:
         logger.debug("Loaded human tools")
 
 
-def _choose_legacy_key_type(config: Config) -> str:
-    """Pick the `get_key_type` return value for the legacy tool loader.
-
-    During the transition the handwritten tools still key off prefix inference.
-    We map the new dual-credential config back onto that single label so the
-    existing loader keeps working unchanged.
-    """
-    # If a true legacy key is present, honor its prefix (matches old behavior).
-    if config.legacy_key:
-        return get_key_type(config.legacy_key)
-    # Otherwise map from the resolved scope list.
-    has_agent = "agent" in config.scope
-    has_human = "human" in config.scope
+def _key_type_from_scope(scope: Sequence[str]) -> str:
+    """Map resolved scopes back to the legacy handwritten loader label."""
+    has_agent = "agent" in scope
+    has_human = "human" in scope
     if has_agent and has_human:
         return "legacy"
     if has_agent:
         return "agent"
     if has_human:
         return "user"
-    # Fall back to whatever THENVOI_API_KEY looked like (empty string -> unknown).
+    return "unknown"
+
+
+def _choose_legacy_key_type(config: Config) -> str:
+    """Pick the `get_key_type` return value for the legacy tool loader.
+
+    During the transition the handwritten tools still key off prefix inference.
+    Scope-specific credentials must honor the resolved scope instead of a stale
+    legacy key; otherwise a process can log scope=["human"] while loading agent
+    tools from `THENVOI_API_KEY`.
+    """
+    if config.user_key or config.agent_key:
+        return _key_type_from_scope(config.scope)
+    if config.legacy_key:
+        return get_key_type(config.legacy_key)
     return get_key_type(settings.thenvoi_api_key)
 
 
@@ -112,7 +121,9 @@ def health_check(ctx: AppContextType) -> str:
     """Test MCP server and API connectivity."""
     app_ctx = get_app_context(ctx)
     client = app_ctx.client
-    key_type = get_key_type(settings.thenvoi_api_key)
+    key_type = _key_type_from_scope(app_ctx.scope)
+    if key_type == "unknown":
+        key_type = get_key_type(settings.thenvoi_api_key)
     try:
         if key_type == "user":
             client.human_api_agents.list_my_agents()
@@ -234,6 +245,19 @@ def _cli_mapping(args: argparse.Namespace) -> dict[str, object]:
     }
 
 
+def _apply_legacy_scope_writeback(
+    config: Config,
+) -> Config:
+    """Return config with scope rewritten to match a pure legacy key."""
+    legacy_human, legacy_agent = _legacy_key_capabilities(config.legacy_key)
+    legacy_scope: list[Literal["agent", "human"]] = []
+    if legacy_agent:
+        legacy_scope.append("agent")
+    if legacy_human:
+        legacy_scope.append("human")
+    return replace(config, scope=legacy_scope)
+
+
 def run() -> None:
     """Run the MCP server with configurable transport mode.
 
@@ -284,13 +308,7 @@ def run() -> None:
     # for an all-capable `thnv_*` key, in which case config.scope is still the
     # default ["agent"] but load_tools will load both surfaces).
     if _is_pure_legacy_invocation(args, config):
-        legacy_human, legacy_agent = _legacy_key_capabilities(config.legacy_key)
-        legacy_scope: list[Literal["agent", "human"]] = []
-        if legacy_agent:
-            legacy_scope.append("agent")
-        if legacy_human:
-            legacy_scope.append("human")
-        config.scope = legacy_scope
+        config = _apply_legacy_scope_writeback(config)
 
     set_pending_config(config)
 

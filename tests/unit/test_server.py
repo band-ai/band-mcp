@@ -103,11 +103,9 @@ def test_is_pure_legacy_invocation_false_when_no_legacy_key():
 # ---------------------------------------------------------------------------
 # Escape-hatch scope write-back (C2 / I3)
 #
-# These tests exercise the `validate(config)` failure path inside `run()` by
-# driving the relevant branch directly rather than invoking `run()` — `run()`
-# ends with `mcp.run()` which would block on stdio. The logic under test is
-# small enough to reconstruct inline: if `_is_pure_legacy_invocation` is true,
-# the legacy key's prefix determines `config.scope`.
+# These tests exercise the helper used by the `validate(config)` failure path
+# inside `run()` rather than invoking `run()` itself — `run()` ends with
+# `mcp.run()` which would block on stdio.
 # ---------------------------------------------------------------------------
 
 
@@ -144,12 +142,7 @@ def test_escape_hatch_writes_scope_from_legacy_key(
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("THENVOI_API_KEY", legacy_key)
 
-    from thenvoi_mcp.config import (
-        ConfigError,
-        _legacy_key_capabilities,
-        resolve_config,
-        validate,
-    )
+    from thenvoi_mcp.config import ConfigError, resolve_config, validate
 
     args = _make_args()
     cli = {
@@ -171,19 +164,14 @@ def test_escape_hatch_writes_scope_from_legacy_key(
         pass  # pure-legacy invocation keeps booting
 
     assert server_mod._is_pure_legacy_invocation(args, config) is True
-    legacy_human, legacy_agent = _legacy_key_capabilities(config.legacy_key)
-    scope_writeback: list[str] = []
-    if legacy_agent:
-        scope_writeback.append("agent")
-    if legacy_human:
-        scope_writeback.append("human")
-    config.scope = scope_writeback  # type: ignore[assignment]
+    rewritten = server_mod._apply_legacy_scope_writeback(config)
 
-    assert config.scope == expected_scope
+    assert rewritten.scope == expected_scope
+    assert rewritten is not config
 
 
 def test_escape_hatch_user_legacy_key_maps_to_human_only(monkeypatch):
-    """Specific C2 scenario from the review: `THENVOI_API_KEY=thnv_u_*` must
+    """Specific C2 scenario from the review: user legacy keys must
     log / register as `['human']`, not `['agent']`.
     """
     for name in (
@@ -210,4 +198,29 @@ def test_escape_hatch_user_legacy_key_maps_to_human_only(monkeypatch):
     # And the server-side _choose_legacy_key_type resolves to "user" when
     # scope is later set to ["human"].
     config = Config(legacy_key="thnv_u_xyz", scope=["human"])
+    assert server_mod._choose_legacy_key_type(config) == "user"
+
+
+@pytest.mark.parametrize(
+    ("key", "expected"),
+    [
+        ("thnv_u_xyz", "user"),
+        ("band_u_xyz", "user"),
+        ("thnv_a_xyz", "agent"),
+        ("band_a_xyz", "agent"),
+        ("thnv_xyz", "legacy"),
+        ("band_xyz", "legacy"),
+    ],
+)
+def test_get_key_type_accepts_thenvoi_and_band_prefixes(key, expected):
+    assert server_mod.get_key_type(key) == expected
+
+
+def test_scope_specific_key_type_wins_over_stale_legacy_key():
+    config = Config(
+        user_key="thnv_u_current",
+        legacy_key="thnv_a_stale",
+        scope=["human"],
+    )
+
     assert server_mod._choose_legacy_key_type(config) == "user"

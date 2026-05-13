@@ -27,6 +27,7 @@ import logging
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -35,7 +36,12 @@ from mcp.server.session import ServerSession
 from mcp.server.transport_security import TransportSecuritySettings
 from thenvoi_rest import AsyncRestClient, RestClient
 
-from thenvoi_mcp.config import Config, settings, resolve_credential_for_scope
+from thenvoi_mcp.config import (
+    Config,
+    ConfigError,
+    settings,
+    resolve_credential_for_scope,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -59,8 +65,8 @@ class AppContext:
     the current config (e.g. a human-only deployment has no `agent_rest`).
 
     `human_tools` is the startup-constructed singleton returned by
-    `get_human_tools()`. `AgentTools` is constructed per-room and cached in
-    `_agent_tools_cache` by `get_agent_tools()`.
+    `get_human_tools()`. `AgentTools` is constructed per-room and cached in a
+    request-scoped ContextVar by `get_agent_tools()`.
 
     `pinned_room_id`, `scope`, and `tools` carry the resolved Config values
     forward so the registrar (Phase 3) doesn't need to re-resolve.
@@ -81,15 +87,12 @@ class AppContext:
     scope: list[str] = field(default_factory=list)
     tools: list[str] = field(default_factory=list)
 
-    # Per-request cache for AgentTools keyed by room_id. Room-less agent tools
-    # use None as the cache key. The registrar clears this at the start of each
-    # tool call; see `get_agent_tools`.
-    # TODO(INT-351): call reset_agent_tools_cache(ctx) at the start of each
-    # tool invocation. Phase 2 plumbs the cache; Phase 3 owns the reset site.
-    _agent_tools_cache: dict[str | None, Any] = field(default_factory=dict)
-
 
 AppContextType = Context[ServerSession, AppContext, None]
+_agent_tools_cache_var: ContextVar[dict[str | None, Any] | None] = ContextVar(
+    "thenvoi_mcp_agent_tools_cache",
+    default=None,
+)
 
 
 def _try_import_human_tools() -> Any:
@@ -168,13 +171,12 @@ def build_app_context(
     # Keep the legacy sync client alive during the transition so the existing
     # `@mcp.tool()` decorated handlers in `tools/agent/*` and `tools/human/*`
     # continue to work. Prefer the legacy key when set (matches previous
-    # behavior exactly), then fall back to either scope-specific key. If
-    # nothing at all is available, we still construct a client with an empty
-    # key — FastMCP/legacy tool calls will fail at request time with an auth
-    # error rather than at import/lifespan time.
-    legacy_for_client = (
-        config.legacy_key or human_cred or agent_cred or settings.thenvoi_api_key or ""
-    )
+    # behavior exactly), then fall back to either scope-specific key. Validation
+    # should catch empty credentials before this point; raise loudly here if a
+    # caller bypassed it so the server does not boot into a delayed 401.
+    legacy_for_client = config.legacy_key or human_cred or agent_cred
+    if legacy_for_client is None:
+        raise ConfigError("No API credential available for legacy RestClient")
     client = RestClient(api_key=legacy_for_client, base_url=base_url)
 
     # Startup-construct `HumanTools` singleton if the SDK + human client are
@@ -277,7 +279,12 @@ def get_agent_tools(ctx: AppContextType, room_id: str | None) -> Any:
         )
         return None
 
-    cached = app_ctx._agent_tools_cache.get(room_id)
+    cache = _agent_tools_cache_var.get()
+    if cache is None:
+        cache = {}
+        _agent_tools_cache_var.set(cache)
+
+    cached = cache.get(room_id)
     if cached is not None:
         return cached
 
@@ -291,7 +298,7 @@ def get_agent_tools(ctx: AppContextType, room_id: str | None) -> Any:
         logger.warning("Failed to construct AgentTools for room %s: %s", room_id, exc)
         return None
 
-    app_ctx._agent_tools_cache[room_id] = instance
+    cache[room_id] = instance
     return instance
 
 
@@ -300,12 +307,8 @@ def reset_agent_tools_cache(ctx: AppContextType) -> None:
 
     Phase 3's registrar calls this at the start of each tool invocation so the
     cache's per-request semantics hold.
-
-    TODO(INT-351): wire this into the registrar's pre-invocation hook. Phase 2
-    exposes the reset but has no caller; without the Phase 3 wiring the cache
-    will leak across tool calls for the server's lifetime.
     """
-    get_app_context(ctx)._agent_tools_cache.clear()
+    _agent_tools_cache_var.set({})
 
 
 def serialize_response(result: Any, **kwargs: Any) -> str:

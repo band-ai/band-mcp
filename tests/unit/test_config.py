@@ -20,6 +20,7 @@ from thenvoi_mcp.config import (
     Config,
     ConfigError,
     ConfigWarning,
+    _legacy_key_capabilities,
     _suggest_value,
     resolve_config,
     resolve_credential_for_scope,
@@ -55,6 +56,12 @@ def test_config_default_scope_is_agent():
     cfg = Config()
     assert cfg.scope == ["agent"]
     assert cfg.tools == []
+
+
+def test_config_is_frozen_dataclass():
+    cfg = Config()
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        cfg.scope = ["human"]  # type: ignore[misc]
 
 
 def test_config_default_scope_isolated_between_instances():
@@ -134,6 +141,22 @@ def test_legacy_key_only_from_thenvoi_api_key():
     # legacy doesn't populate user_key/agent_key directly
     assert cfg.user_key is None
     assert cfg.agent_key is None
+
+
+@pytest.mark.parametrize(
+    ("key", "expected"),
+    [
+        ("thnv_u_abc", (True, False)),
+        ("band_u_abc", (True, False)),
+        ("thnv_a_abc", (False, True)),
+        ("band_a_abc", (False, True)),
+        ("thnv_abc", (True, True)),
+        ("band_abc", (True, True)),
+        ("other_abc", (False, False)),
+    ],
+)
+def test_legacy_key_capabilities_accept_thenvoi_and_band_prefixes(key, expected):
+    assert _legacy_key_capabilities(key) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -289,6 +312,11 @@ def test_tools_repeatable():
 
 def test_tools_explicit_empty_string_overrides_env():
     cfg = resolve_config(cli={"tools": ""}, env={"THENVOI_MCP_TOOLS": "contacts"})
+    assert cfg.tools == []
+
+
+def test_tools_explicit_empty_argparse_list_overrides_env():
+    cfg = resolve_config(cli={"tools": [""]}, env={"THENVOI_MCP_TOOLS": "contacts"})
     assert cfg.tools == []
 
 

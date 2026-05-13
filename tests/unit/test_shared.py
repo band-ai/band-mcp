@@ -9,8 +9,11 @@ fails.
 from __future__ import annotations
 
 import logging
+from typing import Any
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+
+import pytest
 
 from thenvoi_mcp import shared as shared_mod
 from thenvoi_mcp.shared import (
@@ -21,10 +24,17 @@ from thenvoi_mcp.shared import (
 )
 
 
-def _make_ctx(app_context: AppContext) -> object:
+def _make_ctx(app_context: AppContext) -> Any:
     """Build a minimal ctx object matching AppContextType for the helpers."""
     request_context = SimpleNamespace(lifespan_context=app_context)
     return SimpleNamespace(request_context=request_context)
+
+
+@pytest.fixture(autouse=True)
+def reset_agent_tools_context_cache():
+    shared_mod._agent_tools_cache_var.set({})
+    yield
+    shared_mod._agent_tools_cache_var.set({})
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +127,7 @@ def test_get_agent_tools_accepts_none_for_room_less_agent_tools(monkeypatch):
     result = get_agent_tools(ctx, None)
 
     assert result.room_id is None
-    assert app_ctx._agent_tools_cache == {None: result}
+    assert get_agent_tools(ctx, None) is result
 
 
 def test_reset_agent_tools_cache_clears_entries(monkeypatch):
@@ -133,10 +143,9 @@ def test_reset_agent_tools_cache_clears_entries(monkeypatch):
     monkeypatch.setattr(shared_mod, "_try_import_agent_tools", lambda: FakeAgentTools)
 
     before = get_agent_tools(ctx, "room_A")
-    assert app_ctx._agent_tools_cache == {"room_A": before}
+    assert get_agent_tools(ctx, "room_A") is before
 
     reset_agent_tools_cache(ctx)
-    assert app_ctx._agent_tools_cache == {}
 
     # A subsequent call produces a fresh instance.
     after = get_agent_tools(ctx, "room_A")
@@ -167,4 +176,4 @@ def test_get_agent_tools_returns_none_when_sdk_import_fails(monkeypatch, caplog)
     result = get_agent_tools(ctx, "room_A")
     assert result is None
     # Nothing should be cached when construction fails.
-    assert app_ctx._agent_tools_cache == {}
+    assert get_agent_tools(ctx, "room_A") is None
