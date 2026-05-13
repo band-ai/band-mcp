@@ -16,6 +16,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from thenvoi_mcp import shared as shared_mod
+from thenvoi_mcp.config import Config
 from thenvoi_mcp.shared import (
     AppContext,
     get_agent_tools,
@@ -177,3 +178,88 @@ def test_get_agent_tools_returns_none_when_sdk_import_fails(monkeypatch, caplog)
     assert result is None
     # Nothing should be cached when construction fails.
     assert get_agent_tools(ctx, "room_A") is None
+
+
+# ---------------------------------------------------------------------------
+# Legacy sync-client credential selection
+# ---------------------------------------------------------------------------
+
+
+def test_build_app_context_uses_user_key_for_human_scope_with_stale_legacy_agent_key(
+    monkeypatch,
+):
+    constructed: list[str] = []
+
+    class FakeRestClient:
+        def __init__(self, *, api_key: str, base_url: str):
+            constructed.append(api_key)
+            self.api_key = api_key
+            self.base_url = base_url
+
+    monkeypatch.setattr(shared_mod, "RestClient", FakeRestClient)
+    monkeypatch.setattr(shared_mod, "AsyncRestClient", MagicMock())
+    monkeypatch.setattr(shared_mod, "_try_import_human_tools", lambda: None)
+
+    app_ctx = shared_mod.build_app_context(
+        Config(
+            user_key="thnv_u_current",
+            legacy_key="thnv_a_stale",
+            scope=["human"],
+        )
+    )
+
+    assert constructed == ["thnv_u_current"]
+    assert app_ctx.client.api_key == "thnv_u_current"
+
+
+def test_build_app_context_uses_agent_key_for_agent_scope_with_stale_legacy_user_key(
+    monkeypatch,
+):
+    constructed: list[str] = []
+
+    class FakeRestClient:
+        def __init__(self, *, api_key: str, base_url: str):
+            constructed.append(api_key)
+            self.api_key = api_key
+            self.base_url = base_url
+
+    monkeypatch.setattr(shared_mod, "RestClient", FakeRestClient)
+    monkeypatch.setattr(shared_mod, "AsyncRestClient", MagicMock())
+    monkeypatch.setattr(shared_mod, "_try_import_human_tools", lambda: None)
+
+    app_ctx = shared_mod.build_app_context(
+        Config(
+            agent_key="thnv_a_current",
+            legacy_key="thnv_u_stale",
+            scope=["agent"],
+        )
+    )
+
+    assert constructed == ["thnv_a_current"]
+    assert app_ctx.client.api_key == "thnv_a_current"
+
+
+def test_build_app_context_keeps_all_capable_legacy_key_for_dual_scope(monkeypatch):
+    constructed: list[str] = []
+
+    class FakeRestClient:
+        def __init__(self, *, api_key: str, base_url: str):
+            constructed.append(api_key)
+            self.api_key = api_key
+            self.base_url = base_url
+
+    monkeypatch.setattr(shared_mod, "RestClient", FakeRestClient)
+    monkeypatch.setattr(shared_mod, "AsyncRestClient", MagicMock())
+    monkeypatch.setattr(shared_mod, "_try_import_human_tools", lambda: None)
+
+    app_ctx = shared_mod.build_app_context(
+        Config(
+            user_key="thnv_u_current",
+            agent_key="thnv_a_current",
+            legacy_key="thnv_legacy_all",
+            scope=["agent", "human"],
+        )
+    )
+
+    assert constructed == ["thnv_legacy_all"]
+    assert app_ctx.client.api_key == "thnv_legacy_all"

@@ -39,6 +39,7 @@ from thenvoi_rest import AsyncRestClient, RestClient
 from thenvoi_mcp.config import (
     Config,
     ConfigError,
+    _legacy_key_capabilities,
     settings,
     resolve_credential_for_scope,
 )
@@ -128,6 +129,32 @@ def _try_import_agent_tools() -> Any:
     return AgentTools
 
 
+def _choose_legacy_client_credential(
+    config: Config,
+    *,
+    human_cred: str | None,
+    agent_cred: str | None,
+) -> str | None:
+    """Choose the transitional sync-client key for handwritten handlers.
+
+    Scope-specific credentials must beat a stale ``THENVOI_API_KEY`` here just
+    as they do in ``resolve_credential_for_scope``. Otherwise startup can log a
+    human-only scope and register human handlers while the legacy ``RestClient``
+    is still bound to an agent key from ``THENVOI_API_KEY``.
+    """
+    scopes = set(config.scope)
+    if scopes == {"human"}:
+        return human_cred
+    if scopes == {"agent"}:
+        return agent_cred
+
+    legacy_human, legacy_agent = _legacy_key_capabilities(config.legacy_key)
+    if scopes == {"agent", "human"} and legacy_human and legacy_agent:
+        return config.legacy_key
+
+    return human_cred or agent_cred or config.legacy_key
+
+
 def build_app_context(
     config: Config | None = None,
 ) -> AppContext:
@@ -170,11 +197,15 @@ def build_app_context(
 
     # Keep the legacy sync client alive during the transition so the existing
     # `@mcp.tool()` decorated handlers in `tools/agent/*` and `tools/human/*`
-    # continue to work. Prefer the legacy key when set (matches previous
-    # behavior exactly), then fall back to either scope-specific key. Validation
-    # should catch empty credentials before this point; raise loudly here if a
-    # caller bypassed it so the server does not boot into a delayed 401.
-    legacy_for_client = config.legacy_key or human_cred or agent_cred
+    # continue to work. The key must match the resolved scope rather than a
+    # stale legacy env var; validation should catch empty credentials before this
+    # point. Raise loudly here if a caller bypassed it so the server does not
+    # boot into a delayed 401.
+    legacy_for_client = _choose_legacy_client_credential(
+        config,
+        human_cred=human_cred,
+        agent_cred=agent_cred,
+    )
     if legacy_for_client is None:
         raise ConfigError("No API credential available for legacy RestClient")
     client = RestClient(api_key=legacy_for_client, base_url=base_url)
