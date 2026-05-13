@@ -1,18 +1,11 @@
 {
-    "mcpServers": {
-      "thenvoi": {
-        "command": "uv",
-        "args": [
-          "--directory",
-          "/ABSOLUTE/PATH/TO/thenvoi-mcp-server",
-          "run",
-          "thenvoi-mcp"
-        ],
-        "env": {
-          "THENVOI_API_KEY": "your_api_key_here",
-          "THENVOI_BASE_URL": "https://app.thenvoi.com"
-        }
+  "mcpServers": {
+    "thenvoi": {
+      "command": "thenvoi-mcp",
+      "env": {
+        "THENVOI_API_KEY": "your_api_key_here",
+        "THENVOI_BASE_URL": "https://app.thenvoi.com"
       }
     }
   }
-  
+}

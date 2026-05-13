@@ -490,7 +490,7 @@ git clone --recurse-submodules https://github.com/thenvoi/thenvoi-mcp
 cd thenvoi-mcp
 
 # Copy environment template
-cp env.example .env  # then edit and set THENVOI_API_KEY
+cp .env.example .env  # then edit and set THENVOI_API_KEY
 
 # Install with dev dependencies
 uv sync --extra dev
