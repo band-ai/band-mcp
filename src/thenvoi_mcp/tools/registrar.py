@@ -432,12 +432,16 @@ def register_tools(mcp: FastMCP, config: Config) -> None:
     include_memory = "memory" in config.tools
     pinned_room_id = config.room_id
 
+    iter_definitions: Any = iter_tool_definitions
+
     total = 0
     for surface in config.scope:
-        definitions = iter_tool_definitions(
-            surface=surface,
-            include_contacts=include_contacts,
-            include_memory=include_memory,
+        definitions: list[Any] = list(
+            iter_definitions(
+                surface=surface,
+                include_contacts=include_contacts,
+                include_memory=include_memory,
+            )
         )
         for definition in definitions:
             is_agent_room_bound, is_human_room_bound = _classify_tool(definition)

@@ -15,16 +15,16 @@ Covers Phase 3 (INT-351) acceptance criteria:
 from __future__ import annotations
 
 import asyncio
+import sys
+import types
+from dataclasses import dataclass
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from mcp.server.fastmcp import FastMCP
+from pydantic import BaseModel
 
-from thenvoi.runtime.tools import (  # type: ignore[import-not-found]
-    TOOL_DEFINITIONS,
-    iter_tool_definitions,
-)
 from thenvoi_mcp.config import Config
 from thenvoi_mcp.tools import registrar
 from thenvoi_mcp.tools.registrar import (
@@ -35,6 +35,127 @@ from thenvoi_mcp.tools.registrar import (
     make_handler,
     register_tools,
 )
+
+
+class _SendMessageInput(BaseModel):
+    """Send a message."""
+
+    content: str
+    mentions: list[str]
+
+
+class _SimpleContentInput(BaseModel):
+    """Send event content."""
+
+    content: str
+
+
+class _IdentifierInput(BaseModel):
+    """Participant identifier."""
+
+    identifier: str
+
+
+class _LookupPeersInput(BaseModel):
+    """Lookup peers."""
+
+    query: str | None = None
+
+
+class _NoInput(BaseModel):
+    """No input."""
+
+
+class _HumanSendMessageInput(BaseModel):
+    """Send a human chat message."""
+
+    chat_id: str
+    content: str
+    recipients: str
+
+
+class _ResolveHandleInput(BaseModel):
+    """Resolve a handle."""
+
+    handle: str
+
+
+@dataclass(frozen=True)
+class _ToolDefinition:
+    name: str
+    surface: str
+    method_name: str
+    input_model: type[BaseModel]
+    category: str = "core"
+
+
+_TOOL_DEFINITIONS_LIST = [
+    _ToolDefinition("thenvoi_send_message", "agent", "send_message", _SendMessageInput),
+    _ToolDefinition("thenvoi_send_event", "agent", "send_event", _SimpleContentInput),
+    _ToolDefinition(
+        "thenvoi_add_participant", "agent", "add_participant", _IdentifierInput
+    ),
+    _ToolDefinition(
+        "thenvoi_remove_participant", "agent", "remove_participant", _IdentifierInput
+    ),
+    _ToolDefinition("thenvoi_get_participants", "agent", "get_participants", _NoInput),
+    _ToolDefinition("thenvoi_lookup_peers", "agent", "lookup_peers", _LookupPeersInput),
+    _ToolDefinition("thenvoi_create_chatroom", "agent", "create_chatroom", _NoInput),
+    _ToolDefinition(
+        "thenvoi_list_memories", "agent", "list_memories", _NoInput, "memory"
+    ),
+    _ToolDefinition(
+        "thenvoi_send_my_chat_message",
+        "human",
+        "send_my_chat_message",
+        _HumanSendMessageInput,
+    ),
+    _ToolDefinition("thenvoi_list_my_chats", "human", "list_my_chats", _NoInput),
+    _ToolDefinition("thenvoi_get_my_profile", "human", "get_my_profile", _NoInput),
+    _ToolDefinition(
+        "thenvoi_list_my_contacts", "human", "list_my_contacts", _NoInput, "contacts"
+    ),
+    _ToolDefinition(
+        "thenvoi_resolve_handle",
+        "human",
+        "resolve_handle",
+        _ResolveHandleInput,
+        "contacts",
+    ),
+    _ToolDefinition(
+        "thenvoi_list_user_memories", "human", "list_user_memories", _NoInput, "memory"
+    ),
+]
+TOOL_DEFINITIONS = {
+    definition.name: definition for definition in _TOOL_DEFINITIONS_LIST
+}
+
+
+def iter_tool_definitions(
+    *,
+    surface: str,
+    include_contacts: bool = False,
+    include_memory: bool = False,
+) -> list[_ToolDefinition]:
+    definitions = [d for d in _TOOL_DEFINITIONS_LIST if d.surface == surface]
+    return [
+        d
+        for d in definitions
+        if (d.category != "contacts" or include_contacts)
+        and (d.category != "memory" or include_memory)
+    ]
+
+
+_fake_thenvoi_tools = types.ModuleType("thenvoi.runtime.tools")
+_fake_thenvoi_tools.TOOL_DEFINITIONS = TOOL_DEFINITIONS
+_fake_thenvoi_tools.iter_tool_definitions = iter_tool_definitions
+_fake_thenvoi_runtime = types.ModuleType("thenvoi.runtime")
+_fake_thenvoi_runtime.tools = _fake_thenvoi_tools
+_fake_thenvoi = types.ModuleType("thenvoi")
+_fake_thenvoi.runtime = _fake_thenvoi_runtime
+sys.modules.setdefault("thenvoi", _fake_thenvoi)
+sys.modules.setdefault("thenvoi.runtime", _fake_thenvoi_runtime)
+sys.modules.setdefault("thenvoi.runtime.tools", _fake_thenvoi_tools)
 
 
 # ---------------------------------------------------------------------------
