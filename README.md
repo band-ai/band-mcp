@@ -54,8 +54,15 @@ Configure your AI assistant to use the Thenvoi MCP Server with the following JSO
   "mcpServers": {
     "thenvoi": {
       "command": "thenvoi-mcp",
+      "args": [
+        "--scope",
+        "agent",
+        "--tools",
+        "contacts"
+      ],
       "env": {
-        "THENVOI_API_KEY": "your_api_key_here",
+        "THENVOI_AGENT_KEY": "thnv_a_your_agent_key",
+        "THENVOI_USER_KEY": "thnv_u_your_user_key",
         "THENVOI_BASE_URL": "https://app.thenvoi.com"
       }
     }
@@ -64,6 +71,8 @@ Configure your AI assistant to use the Thenvoi MCP Server with the following JSO
 ```
 
 > **Note:** This assumes `band-mcp` is installed via `pip` or `uv tool install` so the `thenvoi-mcp` command is on your PATH. If you prefer to run from a local checkout, see the [Development setup](#-development) section.
+
+> **Legacy single-key setups (`THENVOI_API_KEY`) still work** — see the Configuration section below for details and the breaking-change note about `--tools contacts`.
 
 <details>
 <summary><strong>Cursor Setup</strong></summary>
@@ -383,18 +392,69 @@ See `examples/langchain_agent.py` for the complete implementation.
 
 ## ⚙️ Configuration
 
-### Environment Variables
+### Credentials and scope (new in v1.2.0)
 
-Configure the server using `.env` file:
+`thenvoi-mcp` now takes explicit dual credentials and lets operators pick which
+scopes and tool groups to serve:
 
 ```bash
-# Required
+# One credential per scope
+export THENVOI_USER_KEY=thnv_u_your_user_key      # or BAND_USER_KEY
+export THENVOI_AGENT_KEY=thnv_a_your_agent_key    # or BAND_AGENT_KEY
+
+# Serve both scopes in one process (default: agent only)
+uv run thenvoi-mcp --scope agent,human
+
+# Opt into contact-directory / memory tools
+uv run thenvoi-mcp --scope agent --tools contacts,memory
+
+# Pin the whole server to a single chat/room
+uv run thenvoi-mcp --scope agent --room-id r_123
+```
+
+Resolution precedence per field: `CLI flag > THENVOI_* env > BAND_* env`. The
+legacy `THENVOI_API_KEY` env is still honored as a fallback — see below.
+
+**Breaking change note for `--tools`.** Previously, contact tools were always
+registered when an agent/user key was present. The new default is `--tools []`
+(no optional groups). Operators who relied on contact tools being on must now
+pass `--tools contacts` (or set `THENVOI_MCP_TOOLS=contacts`). Memory tools
+remain opt-in via `--tools memory`.
+
+Unknown `--scope` / `--tools` values do not fail startup; they're logged at
+WARN with a "did you mean?" hint, e.g.:
+
+```
+WARN  unknown --tools value 'contact' — did you mean 'contacts'? ignoring.
+WARN  unknown --scope value 'huamn' — did you mean 'human'? ignoring.
+```
+
+### Environment Variables
+
+| Variable                                       | Purpose                                           |
+| ---------------------------------------------- | ------------------------------------------------- |
+| `THENVOI_USER_KEY` / `BAND_USER_KEY`           | User (human-scope) API key (`thnv_u_...`)         |
+| `THENVOI_AGENT_KEY` / `BAND_AGENT_KEY`         | Agent-scope API key (`thnv_a_...`)                |
+| `THENVOI_MCP_SCOPE` / `BAND_MCP_SCOPE`         | Comma-separated scope list (default: `agent`)     |
+| `THENVOI_MCP_TOOLS` / `BAND_MCP_TOOLS`         | Opt-in tool groups: `contacts`, `memory`          |
+| `THENVOI_MCP_ROOM_ID` / `BAND_MCP_ROOM_ID`     | Pinned room id (optional)                         |
+| `THENVOI_API_KEY`                              | Legacy single-key path — **still supported**      |
+| `THENVOI_BASE_URL`                             | API base URL (default: `https://app.thenvoi.com`) |
+| `TRANSPORT`                                    | `stdio` (default) or `sse`                        |
+| `HOST` / `PORT`                                | SSE bind host/port                                |
+
+Legacy `.env` setups keep working unchanged:
+
+```bash
+# Legacy, still supported
 THENVOI_API_KEY=your-api-key-here
 THENVOI_BASE_URL=https://app.thenvoi.com
-
-# Optional
-THENVOI_LOG_LEVEL=info  # Options: debug, info, warning, error
 ```
+
+When both a scope-specific key (`THENVOI_USER_KEY` / `THENVOI_AGENT_KEY`) and
+`THENVOI_API_KEY` are set, the scope-specific key wins for its scope. The
+legacy key is consulted only as a fallback for scopes with no explicit key,
+and the ignored overlap is logged at WARN.
 
 > **Important:** Never commit your `.env` file to version control. It's already in `.gitignore`.
 
