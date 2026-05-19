@@ -54,6 +54,13 @@ thenvoi-mcp = "thenvoi_mcp.server:run"
 [tool.uv]
 package = true
 
+# Pin module path so the published distribution name (e.g. band-mcp) is
+# decoupled from the import path (thenvoi_mcp). uv_build otherwise infers
+# module-name from the project name.
+[tool.uv.build-backend]
+module-name = "thenvoi_mcp"
+module-root = "src"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
