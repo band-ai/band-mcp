@@ -323,7 +323,7 @@ For users authenticated with user API keys.
 #### Agent Management
 
 - `list_my_agents` - List agents owned by the user
-- `register_my_agent` - Register a new external agent (returns API key)
+- `register_my_agent` - Register a new remote agent (returns API key)
 
 #### Chat Management
 

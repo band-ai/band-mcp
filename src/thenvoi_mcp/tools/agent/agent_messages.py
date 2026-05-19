@@ -127,7 +127,7 @@ def get_agent_chat_context(
     - All messages the agent sent (any type: text, tool_call, tool_result, thought, etc.)
     - All text messages that @mention the agent
 
-    Use this to load the complete context an external agent needs to resume execution.
+    Use this to load the complete context a remote agent needs to resume execution.
     Messages are returned in chronological order (oldest first).
 
     Args:
