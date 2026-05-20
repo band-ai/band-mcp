@@ -28,7 +28,7 @@ def register_my_agent(
     name: str,
     description: str,
 ) -> str:
-    """Register a new external agent.
+    """Register a new remote agent.
 
     Returns the agent details including API key. Save the API key - it's only shown once!
 
