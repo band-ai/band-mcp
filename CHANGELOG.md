@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0](https://github.com/thenvoi/thenvoi-mcp/compare/thenvoi-mcp-v1.2.0...thenvoi-mcp-v1.3.0) (2026-05-20)
+
+
+### Features
+
+* Publish thenvoi-mcp to PyPI as band-mcp (INT-435) ([d48fa39](https://github.com/thenvoi/thenvoi-mcp/commit/d48fa392b77431f14258173dac346dde4077c0ce))
+
+
+### Bug Fixes
+
+* **ci:** retarget PR triggers from develop to dev/main ([#102](https://github.com/thenvoi/thenvoi-mcp/issues/102)) ([450a0f2](https://github.com/thenvoi/thenvoi-mcp/commit/450a0f2f8e1eaa3c7312506d782fa586afabc3bd))
+
 ## [1.2.0](https://github.com/thenvoi/thenvoi-mcp/compare/thenvoi-mcp-v1.1.1...thenvoi-mcp-v1.2.0) (2026-04-05)
 
 
