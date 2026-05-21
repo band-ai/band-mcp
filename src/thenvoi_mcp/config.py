@@ -1,4 +1,4 @@
-"""Configuration for thenvoi-mcp.
+"""Configuration for band-mcp.
 
 Phase 2 of INT-338 (INT-350) replaces the single-key `THENVOI_API_KEY` + prefix
 inference config with explicit dual credentials, `--scope` / `--tools` /
@@ -6,7 +6,7 @@ inference config with explicit dual credentials, `--scope` / `--tools` /
 retained as a fallback — existing deployments keep working.
 
 Resolution precedence per credential/field:
-    CLI flag > THENVOI_* env > BAND_* env > THENVOI_API_KEY (legacy only)
+    CLI flag > BAND_* env > THENVOI_* env > THENVOI_API_KEY (legacy only)
 
 `resolve_config(cli, env)` is pure — it takes a CLI-args-ish mapping and an
 environment mapping, and returns a `Config`. `validate(config)` raises
@@ -24,6 +24,7 @@ import difflib
 from dataclasses import dataclass, field
 from typing import Literal, Mapping, Sequence, cast
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Scope = Literal["agent", "human"]
@@ -101,8 +102,14 @@ class Settings(BaseSettings):
     """
 
     # API configuration
-    thenvoi_api_key: str = ""
-    thenvoi_base_url: str = "https://app.thenvoi.com"
+    thenvoi_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("BAND_API_KEY", "THENVOI_API_KEY"),
+    )
+    thenvoi_base_url: str = Field(
+        default="https://app.band.ai",
+        validation_alias=AliasChoices("BAND_BASE_URL", "THENVOI_BASE_URL"),
+    )
 
     # Transport configuration
     transport: Literal["stdio", "sse"] = "stdio"
@@ -230,7 +237,7 @@ def _resolve_list(
 ) -> list[str]:
     """Apply per-field precedence for list-valued settings.
 
-    Precedence: CLI > THENVOI_* env > BAND_* env > default.
+    Precedence: CLI > BAND_* env > THENVOI_* env > default.
 
     `explicit_empty` lets a caller pass `--tools ""` (empty CLI value) and have
     it override the env/default, matching the ticket's `--tools ""` -> []
@@ -242,10 +249,10 @@ def _resolve_list(
         not isinstance(cli_value, (list, tuple)) or len(cli_value) > 0
     ):
         return _normalize_list_value(cli_value)
-    if env_primary is not None:
-        return _normalize_list_value(env_primary)
     if env_alias is not None:
         return _normalize_list_value(env_alias)
+    if env_primary is not None:
+        return _normalize_list_value(env_primary)
     return list(default)
 
 
@@ -299,7 +306,7 @@ def _resolve_scalar(
     env_primary: str | None,
     env_alias: str | None,
 ) -> str | None:
-    """CLI > THENVOI_* > BAND_* > None. Empty strings count as unset."""
+    """CLI > BAND_* > THENVOI_* > None. Empty strings count as unset."""
     for candidate in (cli_value, env_primary, env_alias):
         if candidate is not None and candidate != "":
             return candidate
@@ -336,17 +343,17 @@ def resolve_config(
         cli.get("user_key")
         if isinstance(cli.get("user_key"), str) or cli.get("user_key") is None
         else None,  # type: ignore[arg-type]
-        env.get("THENVOI_USER_KEY"),
         env.get("BAND_USER_KEY"),
+        env.get("THENVOI_USER_KEY"),
     )
     agent_key = _resolve_scalar(
         cli.get("agent_key")
         if isinstance(cli.get("agent_key"), str) or cli.get("agent_key") is None
         else None,  # type: ignore[arg-type]
-        env.get("THENVOI_AGENT_KEY"),
         env.get("BAND_AGENT_KEY"),
+        env.get("THENVOI_AGENT_KEY"),
     )
-    legacy_key_raw = env.get("THENVOI_API_KEY")
+    legacy_key_raw = env.get("BAND_API_KEY") or env.get("THENVOI_API_KEY")
     legacy_key: str | None = legacy_key_raw if legacy_key_raw else None
 
     # --- Room id -----------------------------------------------------------
@@ -354,8 +361,8 @@ def resolve_config(
         cli.get("room_id")
         if isinstance(cli.get("room_id"), str) or cli.get("room_id") is None
         else None,  # type: ignore[arg-type]
-        env.get("THENVOI_MCP_ROOM_ID"),
         env.get("BAND_MCP_ROOM_ID"),
+        env.get("THENVOI_MCP_ROOM_ID"),
     )
 
     warnings: list[ConfigWarning] = []
@@ -366,8 +373,8 @@ def resolve_config(
         cli_scope
         if cli_scope is None or isinstance(cli_scope, (str, list, tuple))
         else None,  # type: ignore[arg-type]
-        env.get("THENVOI_MCP_SCOPE"),
         env.get("BAND_MCP_SCOPE"),
+        env.get("THENVOI_MCP_SCOPE"),
         default=list(DEFAULT_SCOPE),
         explicit_empty=False,
     )
@@ -392,8 +399,8 @@ def resolve_config(
         cli_tools
         if cli_tools is None or isinstance(cli_tools, (str, list, tuple))
         else None,  # type: ignore[arg-type]
-        env.get("THENVOI_MCP_TOOLS"),
         env.get("BAND_MCP_TOOLS"),
+        env.get("THENVOI_MCP_TOOLS"),
         default=list(DEFAULT_TOOLS),
         explicit_empty=explicit_empty,
     )
@@ -426,8 +433,8 @@ def resolve_config(
                     value="legacy_key",
                     did_you_mean=None,
                     message=(
-                        "THENVOI_API_KEY is set but scope-specific keys "
-                        "(THENVOI_USER_KEY / THENVOI_AGENT_KEY) take precedence; "
+                        "A legacy API key is set but scope-specific keys"
+                        "(BAND_USER_KEY / BAND_AGENT_KEY) take precedence;"
                         "legacy key ignored for overlapping scope(s)."
                     ),
                 )
@@ -464,14 +471,14 @@ def validate(config: Config) -> None:
         if config.user_key is None and not legacy_human:
             missing.append(
                 "human scope requested but no user credential available "
-                "(set --user-key / THENVOI_USER_KEY / BAND_USER_KEY, or use a "
+                "(set --user-key / BAND_USER_KEY / THENVOI_USER_KEY, or use a "
                 "human-capable THENVOI_API_KEY)"
             )
     if "agent" in config.scope:
         if config.agent_key is None and not legacy_agent:
             missing.append(
                 "agent scope requested but no agent credential available "
-                "(set --agent-key / THENVOI_AGENT_KEY / BAND_AGENT_KEY, or use an "
+                "(set --agent-key / BAND_AGENT_KEY / THENVOI_AGENT_KEY, or use an "
                 "agent-capable THENVOI_API_KEY)"
             )
 

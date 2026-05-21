@@ -1,4 +1,4 @@
-"""Thenvoi MCP Server - Model Context Protocol integration for Thenvoi."""
+"""Band MCP Server - Model Context Protocol integration for Band."""
 
 from thenvoi_mcp.config import settings
 

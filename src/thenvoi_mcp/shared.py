@@ -248,14 +248,14 @@ def set_pending_config(config: Config) -> None:
 @asynccontextmanager
 async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     """Lifespan context manager for MCP server."""
-    logger.info("Initializing Thenvoi API client")
+    logger.info("Initializing Band API client")
     app_context = build_app_context(_pending_config)
-    logger.info("Thenvoi MCP server lifespan started successfully")
+    logger.info("Band MCP server lifespan started successfully")
 
     try:
         yield app_context
     finally:
-        logger.info("Thenvoi MCP server lifespan shutdown complete")
+        logger.info("Band MCP server lifespan shutdown complete")
 
 
 def get_app_context(ctx: AppContextType) -> AppContext:
@@ -283,7 +283,7 @@ def get_human_tools(ctx: AppContextType) -> Any:
     app_ctx = get_app_context(ctx)
     if app_ctx.human_tools is None:
         logger.warning(
-            "get_human_tools(): HumanTools not available. Ensure the Thenvoi "
+            "get_human_tools(): HumanTools not available. Ensure the Band "
             "SDK (INT-349) is installed and a human credential is configured."
         )
     return app_ctx.human_tools
@@ -374,7 +374,7 @@ if (
     )
 
 mcp = FastMCP(
-    name="thenvoi-mcp-server",
+    name="band-mcp-server",
     lifespan=app_lifespan,
     host=settings.host,
     port=settings.port,

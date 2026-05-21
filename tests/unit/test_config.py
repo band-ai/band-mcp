@@ -1,7 +1,7 @@
 """Unit tests for `thenvoi_mcp.config`.
 
 Covers Phase 2 (INT-350) acceptance criteria:
-- Precedence per slot: CLI > THENVOI_* > BAND_* > THENVOI_API_KEY (legacy only).
+- Precedence per slot: CLI > BAND_* > THENVOI_* > THENVOI_API_KEY (legacy only).
 - Scope-specific key wins; legacy is fallback + emits warning when masked.
 - `--scope` / `--tools` parsing (comma-separated, repeatable, explicit empty).
 - Unknown values produce warnings with `did_you_mean` and are dropped.
@@ -100,12 +100,12 @@ def test_user_key_cli_beats_thenvoi_env():
     assert cfg.user_key == "cli_user"
 
 
-def test_user_key_thenvoi_beats_band():
+def test_user_key_band_beats_thenvoi():
     cfg = resolve_config(
         cli={},
         env={"THENVOI_USER_KEY": "env_thenvoi", "BAND_USER_KEY": "env_band"},
     )
-    assert cfg.user_key == "env_thenvoi"
+    assert cfg.user_key == "env_band"
 
 
 def test_user_key_band_when_only_band_set():
@@ -119,7 +119,7 @@ def test_user_key_none_when_nothing_set():
 
 
 def test_agent_key_precedence_chain():
-    # CLI beats THENVOI_* beats BAND_*
+    # CLI beats BAND_* beats THENVOI_*
     cfg = resolve_config(
         cli={"agent_key": "cli_a"},
         env={"THENVOI_AGENT_KEY": "env_t", "BAND_AGENT_KEY": "env_b"},
@@ -129,13 +129,18 @@ def test_agent_key_precedence_chain():
     cfg = resolve_config(
         cli={}, env={"THENVOI_AGENT_KEY": "env_t", "BAND_AGENT_KEY": "env_b"}
     )
-    assert cfg.agent_key == "env_t"
+    assert cfg.agent_key == "env_b"
 
     cfg = resolve_config(cli={}, env={"BAND_AGENT_KEY": "env_b"})
     assert cfg.agent_key == "env_b"
 
 
-def test_legacy_key_only_from_thenvoi_api_key():
+def test_legacy_key_from_band_api_key():
+    cfg = resolve_config(cli={}, env={"BAND_API_KEY": "band_u_abc"})
+    assert cfg.legacy_key == "band_u_abc"
+
+
+def test_legacy_key_falls_back_to_thenvoi_api_key():
     cfg = resolve_config(cli={}, env={"THENVOI_API_KEY": "thnv_u_abc"})
     assert cfg.legacy_key == "thnv_u_abc"
     # legacy doesn't populate user_key/agent_key directly
@@ -217,7 +222,7 @@ def test_room_id_precedence():
     cfg = resolve_config(
         cli={}, env={"THENVOI_MCP_ROOM_ID": "env_t", "BAND_MCP_ROOM_ID": "env_b"}
     )
-    assert cfg.room_id == "env_t"
+    assert cfg.room_id == "env_b"
 
     cfg = resolve_config(cli={}, env={"BAND_MCP_ROOM_ID": "env_b"})
     assert cfg.room_id == "env_b"

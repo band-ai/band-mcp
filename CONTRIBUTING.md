@@ -1,6 +1,6 @@
-# Contributing to Thenvoi MCP
+# Contributing to Band MCP
 
-Thank you for your interest in contributing to Thenvoi MCP! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to Band MCP! This document provides guidelines and instructions for contributing.
 
 ## Development Setup
 
@@ -14,12 +14,12 @@ Thank you for your interest in contributing to Thenvoi MCP! This document provid
 1. Fork the repository
 2. Clone your fork:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/thenvoi-mcp.git
-   cd thenvoi-mcp
+   git clone https://github.com/YOUR_USERNAME/band-mcp.git
+   cd band-mcp
    ```
 3. Add upstream remote:
    ```bash
-   git remote add upstream https://github.com/thenvoi/thenvoi-mcp.git
+   git remote add upstream https://github.com/thenvoi/band-mcp.git
    ```
 4. Install dependencies:
    ```bash
@@ -53,7 +53,7 @@ Thank you for your interest in contributing to Thenvoi MCP! This document provid
    # Unit tests
    uv run pytest tests/ --ignore=tests/integration/ -v
 
-   # Integration tests (requires THENVOI_API_KEY)
+   # Integration tests (requires BAND_API_KEY)
    uv run pytest tests/integration/ -v -s --no-cov
    ```
 
@@ -194,7 +194,7 @@ def test_my_tool(mock_ctx, mock_agent_api):
 
 **Integration Tests:**
 - Place in `tests/integration/`
-- Require `THENVOI_API_KEY` environment variable (set in `.env.test`)
+- Require `BAND_API_KEY` environment variable (set in `.env.test`)
 - Use `@requires_api` decorator to skip if API key is not set
 
 ## Pull Request Guidelines
