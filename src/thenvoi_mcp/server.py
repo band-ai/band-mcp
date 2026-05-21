@@ -162,7 +162,7 @@ Environment Variables:
   BAND_MCP_SCOPE / THENVOI_MCP_SCOPE    Comma-separated scopes (default: agent)
   BAND_MCP_TOOLS / THENVOI_MCP_TOOLS    Opt-in tool groups: contacts, memory
   BAND_MCP_ROOM_ID / THENVOI_MCP_ROOM_ID  Optional pinned room id
-  THENVOI_API_KEY       Legacy single-key path (still supported as fallback)
+  BAND_API_KEY / THENVOI_API_KEY      Legacy single-key path (still supported as fallback)
   BAND_BASE_URL         Base URL for Band API (default: https://app.band.ai)
   TRANSPORT             Transport mode: stdio or sse (default: stdio)
   HOST                  Host to bind for SSE mode (default: 127.0.0.1)
@@ -290,8 +290,8 @@ def run() -> None:
         # that CLI is empty AND no new-style env vars were set.
         if _is_pure_legacy_invocation(args, config):
             logger.info(
-                "Proceeding via legacy THENVOI_API_KEY path (no new-style "
-                "credentials or scope supplied)."
+                "Proceeding via legacy BAND_API_KEY/THENVOI_API_KEY path "
+                "(no new-style credentials or scope supplied)."
             )
         else:
             logger.error("Configuration error: %s", exc)

@@ -249,10 +249,10 @@ def _resolve_list(
         not isinstance(cli_value, (list, tuple)) or len(cli_value) > 0
     ):
         return _normalize_list_value(cli_value)
-    if env_alias is not None:
-        return _normalize_list_value(env_alias)
     if env_primary is not None:
         return _normalize_list_value(env_primary)
+    if env_alias is not None:
+        return _normalize_list_value(env_alias)
     return list(default)
 
 

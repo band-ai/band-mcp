@@ -267,12 +267,12 @@ def test_scope_precedence_cli_over_env():
     assert cfg.scope == ["human"]
 
 
-def test_scope_thenvoi_env_beats_band_env():
+def test_scope_band_env_beats_thenvoi_env():
     cfg = resolve_config(
         cli={},
         env={"THENVOI_MCP_SCOPE": "human", "BAND_MCP_SCOPE": "agent"},
     )
-    assert cfg.scope == ["human"]
+    assert cfg.scope == ["agent"]
 
 
 def test_scope_band_env_when_no_thenvoi():
@@ -335,7 +335,7 @@ def test_tools_precedence():
     cfg = resolve_config(
         cli={}, env={"THENVOI_MCP_TOOLS": "contacts", "BAND_MCP_TOOLS": "memory"}
     )
-    assert cfg.tools == ["contacts"]
+    assert cfg.tools == ["memory"]
 
     cfg = resolve_config(cli={}, env={"BAND_MCP_TOOLS": "memory"})
     assert cfg.tools == ["memory"]
