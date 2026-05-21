@@ -421,7 +421,7 @@ def register_tools(mcp: FastMCP, config: Config) -> None:
         from thenvoi.runtime.tools import iter_tool_definitions  # type: ignore[import-not-found]
     except Exception as exc:  # pragma: no cover - import-time guard
         logger.warning(
-            "register_tools(): Thenvoi SDK not available — skipping SDK-driven "
+            "register_tools(): Band SDK not available — skipping SDK-driven "
             "tool registration. Legacy handwritten handlers will still serve "
             "traffic. (%s)",
             exc,

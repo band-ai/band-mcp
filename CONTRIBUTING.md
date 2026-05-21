@@ -163,7 +163,7 @@ uv run pytest tests/integration/ -v -s --no-cov
 
 ### Writing Tests
 
-This project uses the shared `thenvoi-testing-python` package for test fixtures and utilities.
+This project uses the shared `band-testing-python` package for test fixtures and utilities.
 
 **Unit Tests:**
 - Place in `tests/`

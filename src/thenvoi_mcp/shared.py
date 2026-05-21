@@ -9,7 +9,7 @@ working; Phase 4 (INT-352) deletes those and `client` goes with them.
 
 HumanTools / AgentTools coordination with INT-349
 -------------------------------------------------
-The SDK's `HumanTools` class lands in Phase 1 (INT-349) in `thenvoi-sdk-python`
+The SDK's `HumanTools` class lands in Phase 1 (INT-349) in `band-sdk-python`
 and is not yet available in this environment (the repo depends on
 `thenvoi-client-rest`, which is the Fern-generated REST client only).
 `get_human_tools()` / `get_agent_tools()` import `HumanTools` / `AgentTools`

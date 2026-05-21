@@ -1,6 +1,6 @@
 """Pytest configuration for thenvoi-mcp tests.
 
-Fixtures from thenvoi-testing-python are auto-loaded via pytest entry point.
+Fixtures from band-testing-python are auto-loaded via pytest entry point.
 We override mock_api_client to add v0.0.4 split namespace properties.
 """
 

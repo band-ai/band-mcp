@@ -470,7 +470,7 @@ python --version
 band-mcp --help
 
 # Try running with debug mode
-THENVOI_LOG_LEVEL=debug band-mcp
+BAND_LOG_LEVEL=debug band-mcp
 ```
 
 ### Authentication Failures
