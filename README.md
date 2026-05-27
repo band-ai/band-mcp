@@ -438,8 +438,8 @@ WARN  unknown --scope value 'huamn' — did you mean 'human'? ignoring.
 | `BAND_MCP_SCOPE` / `THENVOI_MCP_SCOPE`         | Comma-separated scope list (default: `agent`)     |
 | `BAND_MCP_TOOLS` / `THENVOI_MCP_TOOLS`         | Opt-in tool groups: `contacts`, `memory`          |
 | `BAND_MCP_ROOM_ID` / `THENVOI_MCP_ROOM_ID`     | Pinned room id (optional)                         |
-| `BAND_API_KEY`                              | Legacy single-key path — **still supported**      |
-| `BAND_BASE_URL`                             | API base URL (default: `https://app.band.ai`) |
+| `BAND_API_KEY` / `THENVOI_API_KEY`          | Legacy single-key path — **still supported**      |
+| `BAND_BASE_URL` / `THENVOI_BASE_URL`        | API base URL (default: `https://app.band.ai`)     |
 | `TRANSPORT`                                    | `stdio` (default) or `sse`                        |
 | `HOST` / `PORT`                                | SSE bind host/port                                |
 
@@ -449,6 +449,10 @@ Legacy `.env` setups keep working unchanged:
 # Legacy, still supported
 BAND_API_KEY=your-api-key-here
 BAND_BASE_URL=https://app.band.ai
+
+# Older Thenvoi names also remain supported
+THENVOI_API_KEY=your-api-key-here
+THENVOI_BASE_URL=https://app.thenvoi.com
 ```
 
 When both a scope-specific key (`BAND_USER_KEY` / `BAND_AGENT_KEY`) and
@@ -479,7 +483,7 @@ BAND_LOG_LEVEL=debug band-mcp
 - Regenerate API key at [app.band.ai/settings/api-keys](https://app.band.ai/settings/api-keys)
 - Test API directly:
   ```bash
-  curl -H "Authorization: Bearer $BAND_API_KEY" \
+  curl -H "X-API-Key: $BAND_API_KEY" \
     https://app.band.ai/api/v1/health
   ```
 
