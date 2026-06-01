@@ -8,11 +8,57 @@ scope write-back (C2/I3 from INT-350 PR review).
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
 from thenvoi_mcp import server as server_mod
 from thenvoi_mcp.config import Config
+
+
+# ---------------------------------------------------------------------------
+# health_check
+# ---------------------------------------------------------------------------
+
+
+def _ctx_for_app(app_ctx: object) -> object:
+    return SimpleNamespace(request_context=SimpleNamespace(lifespan_context=app_ctx))
+
+
+async def test_health_check_checks_both_configured_surfaces():
+    human_rest = SimpleNamespace(
+        human_api_agents=SimpleNamespace(list_my_agents=AsyncMock(return_value=[]))
+    )
+    agent_rest = SimpleNamespace(
+        agent_api_identity=SimpleNamespace(get_agent_me=AsyncMock(return_value={}))
+    )
+    app_ctx = SimpleNamespace(human_rest=human_rest, agent_rest=agent_rest)
+
+    result = await server_mod.health_check(_ctx_for_app(app_ctx))
+
+    assert result.startswith("OK | human,agent | ")
+    human_rest.human_api_agents.list_my_agents.assert_awaited_once()
+    agent_rest.agent_api_identity.get_agent_me.assert_awaited_once()
+
+
+async def test_health_check_reports_agent_failure_even_when_human_succeeds():
+    human_rest = SimpleNamespace(
+        human_api_agents=SimpleNamespace(list_my_agents=AsyncMock(return_value=[]))
+    )
+    agent_rest = SimpleNamespace(
+        agent_api_identity=SimpleNamespace(
+            get_agent_me=AsyncMock(side_effect=RuntimeError("agent denied"))
+        )
+    )
+    app_ctx = SimpleNamespace(human_rest=human_rest, agent_rest=agent_rest)
+
+    result = await server_mod.health_check(_ctx_for_app(app_ctx))
+
+    assert result == "Failed | agent | agent denied"
+    human_rest.human_api_agents.list_my_agents.assert_awaited_once()
+    agent_rest.agent_api_identity.get_agent_me.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +146,29 @@ def test_is_pure_legacy_invocation_false_when_no_legacy_key():
     assert server_mod._is_pure_legacy_invocation(args, config) is False
 
 
+def test_malformed_legacy_key_does_not_bypass_validation(monkeypatch):
+    for name in (
+        "THENVOI_USER_KEY",
+        "THENVOI_AGENT_KEY",
+        "BAND_USER_KEY",
+        "BAND_AGENT_KEY",
+        "THENVOI_MCP_SCOPE",
+        "BAND_MCP_SCOPE",
+        "THENVOI_MCP_TOOLS",
+        "BAND_MCP_TOOLS",
+        "THENVOI_MCP_ROOM_ID",
+        "BAND_MCP_ROOM_ID",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    config = Config(legacy_key="not_a_thenvoi_key", scope=[])
+    args = _make_args()
+    legacy_human, legacy_agent = server_mod._legacy_key_capabilities(config.legacy_key)
+
+    assert server_mod._is_pure_legacy_invocation(args, config) is True
+    assert (legacy_human or legacy_agent) is False
+
+
 # ---------------------------------------------------------------------------
 # Escape-hatch scope write-back (C2 / I3)
 #
@@ -177,7 +246,7 @@ def test_escape_hatch_writes_scope_from_legacy_key(
         scope_writeback.append("agent")
     if legacy_human:
         scope_writeback.append("human")
-    config.scope = scope_writeback  # type: ignore[assignment]
+    config = replace(config, scope=scope_writeback)
 
     assert config.scope == expected_scope
 

@@ -287,11 +287,35 @@ def test_agent_room_bound_model_accepts_room_id_alias() -> None:
     assert v2.chat_id == "r2"
 
 
+def test_agent_room_bound_model_preserves_sdk_description() -> None:
+    definition = TOOL_DEFINITIONS["thenvoi_send_message"]
+    extended = _extend_with_chat_id(definition.input_model, None)
+    assert extended.__doc__ == definition.input_model.__doc__
+
+
+async def test_agent_send_event_accepts_legacy_tool_event_types() -> None:
+    mcp = FastMCP(name="t")
+    cfg = Config(scope=["agent"], tools=[], agent_key="k")
+    register_tools(mcp, cfg)
+
+    t = await _list_tool(mcp, "thenvoi_send_event")
+    assert t is not None
+    props = t.inputSchema.get("properties", {})
+    assert props["message_type"]["enum"] == [
+        "tool_call",
+        "tool_result",
+        "thought",
+        "error",
+        "task",
+    ]
+
+
 async def test_unpinned_agent_handler_calls_get_agent_tools_with_chat_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Fake AgentTools method
     fake_agent_tools = MagicMock()
+    fake_agent_tools.participants = []
     fake_agent_tools.get_participants = AsyncMock(return_value=[])
     fake_agent_tools.send_message = AsyncMock(return_value={"ok": True})
 
@@ -319,7 +343,8 @@ async def test_unpinned_agent_handler_calls_get_agent_tools_with_chat_id(
     get_agent_tools_spy.assert_called_once_with(ctx, "r1")
     # chat_id must NOT reach the AgentTools method call — AgentTools is
     # constructor-scoped and its methods don't take chat_id. The MCP layer
-    # refreshes participants first so SDK mention resolution sees room members.
+    # refreshes participants when the cached SDK instance has no participant
+    # snapshot yet so first-call mention resolution can work.
     fake_agent_tools.get_participants.assert_awaited_once_with()
     fake_agent_tools.send_message.assert_awaited_once()
     call_kwargs = fake_agent_tools.send_message.await_args.kwargs
@@ -616,15 +641,17 @@ async def test_agent_tools_cache_is_not_reset_between_invocations(
     await handler(ctx=ctx, content="b", mentions=["@x"], chat_id="r1")
 
     assert get_agent_tools_spy.call_count == 2
+    assert fake_agent_tools.get_participants.await_count == 2
     assert not hasattr(registrar, "reset_agent_tools_cache")
 
 
-async def test_agent_tools_cache_entry_is_discarded_when_sdk_call_fails(
+async def test_agent_tools_cache_entry_is_discarded_when_participant_refresh_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_agent_tools = MagicMock()
-    fake_agent_tools.get_participants = AsyncMock(return_value=[])
-    fake_agent_tools.send_message = AsyncMock(side_effect=PermissionError("denied"))
+    fake_agent_tools.participants = []
+    fake_agent_tools.get_participants = AsyncMock(side_effect=PermissionError("denied"))
+    fake_agent_tools.send_message = AsyncMock(return_value={"ok": True})
 
     get_agent_tools_spy = MagicMock(return_value=fake_agent_tools)
     discard_spy = MagicMock()
@@ -648,6 +675,7 @@ async def test_agent_tools_cache_entry_is_discarded_when_sdk_call_fails(
     with pytest.raises(PermissionError, match="denied"):
         await handler(ctx=ctx, content="a", mentions=["@x"], chat_id="bad_room")
 
+    fake_agent_tools.send_message.assert_not_called()
     discard_spy.assert_called_once_with(ctx, "bad_room", fake_agent_tools)
 
 

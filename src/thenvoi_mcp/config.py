@@ -60,7 +60,7 @@ class ConfigWarning:
     message: str
 
 
-@dataclass
+@dataclass(frozen=True)
 class Config:
     """Resolved configuration for a single thenvoi-mcp process.
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import os
+from dataclasses import replace
 from typing import Literal
 
 from thenvoi_mcp import __version__
@@ -38,22 +39,23 @@ from thenvoi_mcp.tools.registrar import register_tools
 async def health_check(ctx: AppContextType) -> str:
     """Test MCP server and API connectivity."""
     app_ctx = get_app_context(ctx)
-    # Prefer the human client if available (matches the legacy behavior which
-    # tried human paths first for user/legacy keys). Fall back to agent.
+    checked: list[str] = []
     if app_ctx.human_rest is not None:
         surface = "human"
         try:
             await app_ctx.human_rest.human_api_agents.list_my_agents()
-            return f"OK | {surface} | {settings.thenvoi_base_url}"
+            checked.append(surface)
         except Exception as exc:
             return f"Failed | {surface} | {exc}"
     if app_ctx.agent_rest is not None:
         surface = "agent"
         try:
             await app_ctx.agent_rest.agent_api_identity.get_agent_me()
-            return f"OK | {surface} | {settings.thenvoi_base_url}"
+            checked.append(surface)
         except Exception as exc:
             return f"Failed | {surface} | {exc}"
+    if checked:
+        return f"OK | {','.join(checked)} | {settings.thenvoi_base_url}"
     return "Failed | no credential configured"
 
 
@@ -229,7 +231,8 @@ def run() -> None:
         # operator supplied no explicit scope/keys, honor the old behavior.
         # This keeps existing deployments booting even when validate() would
         # otherwise complain.
-        if _is_pure_legacy_invocation(args, config):
+        legacy_human, legacy_agent = _legacy_key_capabilities(config.legacy_key)
+        if _is_pure_legacy_invocation(args, config) and (legacy_human or legacy_agent):
             logger.info(
                 "Proceeding via legacy THENVOI_API_KEY path (no new-style "
                 "credentials or scope supplied)."
@@ -250,7 +253,7 @@ def run() -> None:
             legacy_scope.append("agent")
         if legacy_human:
             legacy_scope.append("human")
-        config.scope = legacy_scope
+        config = replace(config, scope=legacy_scope)
 
     set_pending_config(config)
 

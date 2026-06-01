@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **BREAKING**: Contact tools are no longer registered by default. Operators who relied on implicit contacts (either through `THENVOI_API_KEY` or the old MCP default) must pass `--tools contacts`. Memory tools remain opt-in via `--tools memory` as before.
-- `health_check` now uses the async REST clients on `AppContext` (`human_rest` preferred, falls back to `agent_rest`). The tool name and response shape are unchanged.
+- `health_check` now uses the async REST clients on `AppContext` and checks every served surface before reporting success. The tool name is unchanged; the pipe-delimited surface field reports the checked scope(s).
 
 ### Migration — tool name changes
 

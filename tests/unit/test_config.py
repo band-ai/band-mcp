@@ -49,6 +49,13 @@ def test_config_warning_fields():
     assert fields == {"kind", "value", "did_you_mean", "message"}
 
 
+def test_config_is_frozen_dataclass():
+    cfg = Config()
+    assert dataclasses.is_dataclass(cfg)
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        cfg.scope = ["human"]  # type: ignore[misc]
+
+
 def test_config_default_scope_is_agent():
     # AC #6: default scope is ["agent"]. A bare `Config()` must honor it so
     # test fixtures and external callers don't silently fail validate().

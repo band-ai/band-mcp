@@ -21,9 +21,9 @@ signature.
 
 Resolution: the registrar *itself* is the layer that adds a room field to
 the advertised agent tool schema. Today's handwritten MCP handlers use
-``chat_id`` on every room-bound agent tool (see
-``tools/agent/agent_messages.py`` and friends) — keeping that name means
-zero breaking change for existing MCP consumers. ``AliasChoices("chat_id",
+``chat_id`` on every room-bound agent tool. Keeping that name means
+zero breaking change for existing MCP consumers after the handwritten handlers
+are removed. ``AliasChoices("chat_id",
 "room_id")`` makes the forward-compat ``room_id`` name work too, matching
 the Phase 3 spec's intent. See ``AGENT_ROOM_BOUND_TOOL_NAMES`` below.
 
@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import inspect
 import json
-from typing import Annotated, Any, Callable, cast
+from typing import Annotated, Any, Callable, Literal, cast
 
 from mcp.server.fastmcp import FastMCP
 from pydantic import AliasChoices, BaseModel, Field, ValidationError, create_model
@@ -74,6 +74,10 @@ AGENT_ROOM_BOUND_TOOL_NAMES: frozenset[str] = frozenset(
     }
 )
 
+AGENT_EVENT_COMPAT_TOOL_NAMES: frozenset[str] = frozenset({"thenvoi_send_event"})
+CHAT_ID_MAX_LENGTH = 255
+EVENT_MESSAGE_TYPE = Literal["tool_call", "tool_result", "thought", "error", "task"]
+
 
 # ---------------------------------------------------------------------------
 # Input-model transformers
@@ -98,13 +102,14 @@ def _extend_with_chat_id(
       injects ``pinned_room_id`` at call time.
     """
     if pinned_room_id is None:
-        return create_model(  # type: ignore[call-overload]
+        model = create_model(  # type: ignore[call-overload]
             f"{original.__name__}WithChatId",
             __base__=original,
             chat_id=(
                 str,
                 Field(
                     ...,
+                    max_length=CHAT_ID_MAX_LENGTH,
                     validation_alias=AliasChoices("chat_id", "room_id"),
                     description=(
                         "ID of the chat room (accepted as 'chat_id' or 'room_id')."
@@ -112,18 +117,41 @@ def _extend_with_chat_id(
                 ),
             ),
         )
-    return create_model(  # type: ignore[call-overload]
-        f"{original.__name__}WithChatIdPinned",
+    else:
+        model = create_model(  # type: ignore[call-overload]
+            f"{original.__name__}WithChatIdPinned",
+            __base__=original,
+            chat_id=(
+                SkipJsonSchema[str | None],
+                Field(
+                    default=None,
+                    max_length=CHAT_ID_MAX_LENGTH,
+                    validation_alias=AliasChoices("chat_id", "room_id"),
+                    description=("Pinned room id (hidden from advertised schema)."),
+                ),
+            ),
+        )
+    model.__doc__ = original.__doc__
+    return model
+
+
+def _widen_agent_event_message_type(original: type[BaseModel]) -> type[BaseModel]:
+    """Preserve legacy MCP event types while the SDK schema catches up."""
+    model = create_model(  # type: ignore[call-overload]
+        f"{original.__name__}McpCompat",
         __base__=original,
-        chat_id=(
-            SkipJsonSchema[str | None],
+        message_type=(
+            EVENT_MESSAGE_TYPE,
             Field(
-                default=None,
-                validation_alias=AliasChoices("chat_id", "room_id"),
-                description=("Pinned room id (hidden from advertised schema)."),
+                ...,
+                description=(
+                    "Type of event: tool_call, tool_result, thought, error, or task."
+                ),
             ),
         ),
     )
+    model.__doc__ = original.__doc__
+    return model
 
 
 def _pin_existing_chat_id(
@@ -137,18 +165,21 @@ def _pin_existing_chat_id(
     still accepted via alias so an older client passing ``chat_id`` does not
     fail validation. The handler injects ``pinned_room_id`` at call time.
     """
-    return create_model(  # type: ignore[call-overload]
+    model = create_model(  # type: ignore[call-overload]
         f"{original.__name__}Pinned",
         __base__=original,
         chat_id=(
             SkipJsonSchema[str | None],
             Field(
                 default=None,
+                max_length=255,
                 validation_alias=AliasChoices("chat_id", "room_id"),
                 description=("Pinned room id (hidden from advertised schema)."),
             ),
         ),
     )
+    model.__doc__ = original.__doc__
+    return model
 
 
 # ---------------------------------------------------------------------------
@@ -282,47 +313,51 @@ async def _invoke(
     call_kwargs = validated.model_dump(exclude_none=True, by_alias=False)
 
     agent_cache_key: str | None = None
-    if surface == "agent":
-        # Agent tools: pull chat_id out of kwargs and scope AgentTools to it.
-        if is_agent_room_bound:
-            chat_id = call_kwargs.pop("chat_id", None)
-            if not chat_id:
-                raise ValueError(
-                    f"{tool_name}: missing chat_id (or room_id) for room-bound tool"
-                )
-            agent_cache_key = chat_id
-            tools_instance = get_agent_tools(ctx, chat_id)
-        else:
+    if surface == "agent" and is_agent_room_bound:
+        chat_id = call_kwargs.pop("chat_id", None)
+        if not chat_id:
+            raise ValueError(
+                f"{tool_name}: missing chat_id (or room_id) for room-bound tool"
+            )
+        agent_cache_key = chat_id
+
+    def resolve_tools_instance() -> Any:
+        if surface == "agent":
+            if is_agent_room_bound:
+                return get_agent_tools(ctx, agent_cache_key)
             # Room-less agent tool (e.g. ``thenvoi_create_chatroom``). The
             # SDK's ``AgentTools`` is constructor-scoped, but such tools only
             # touch ``self.rest``. Keep them on the dedicated None cache key so
             # they never share participant state with a room-scoped instance,
             # while still passing a string sentinel to the SDK constructor.
-            tools_instance = get_agent_tools(ctx, None, sdk_room_id="")
-    else:
-        tools_instance = get_human_tools(ctx)
+            return get_agent_tools(ctx, None, sdk_room_id="")
+        return get_human_tools(ctx)
 
-    if tools_instance is None:
-        raise RuntimeError(
-            f"{tool_name}: {surface} tools not available (SDK not installed or "
-            "no credential configured for this scope)"
-        )
+    def resolve_method(tools_instance: Any) -> Callable[..., Any]:
+        if tools_instance is None:
+            raise RuntimeError(
+                f"{tool_name}: {surface} tools not available (SDK not installed or "
+                "no credential configured for this scope)"
+            )
+        raw_method = getattr(tools_instance, method_name, None)
+        if raw_method is None or not callable(raw_method):
+            raise RuntimeError(
+                f"{tool_name}: method '{method_name}' not found on "
+                f"{type(tools_instance).__name__}"
+            )
+        return cast(Callable[..., Any], raw_method)
 
-    raw_method = getattr(tools_instance, method_name, None)
-    if raw_method is None or not callable(raw_method):
-        raise RuntimeError(
-            f"{tool_name}: method '{method_name}' not found on "
-            f"{type(tools_instance).__name__}"
-        )
-    method = cast(Callable[..., Any], raw_method)
-
-    async def call_sdk_method() -> Any:
+    async def call_sdk_method(tools_instance: Any, method: Callable[..., Any]) -> Any:
         if surface == "agent" and method_name == "send_message":
             refresh_participants = getattr(tools_instance, "get_participants", None)
             if callable(refresh_participants):
-                refreshed = refresh_participants()
-                if inspect.isawaitable(refreshed):
-                    await refreshed
+                try:
+                    refreshed = refresh_participants()
+                    if inspect.isawaitable(refreshed):
+                        await refreshed
+                except Exception:
+                    discard_agent_tools(ctx, agent_cache_key, tools_instance)
+                    raise
 
         result = method(**call_kwargs)
         if inspect.isawaitable(result):
@@ -332,13 +367,13 @@ async def _invoke(
     if surface == "agent":
         lock = get_agent_tools_lock(ctx, agent_cache_key)
         async with lock:
-            try:
-                result = await call_sdk_method()
-            except Exception:
-                discard_agent_tools(ctx, agent_cache_key, tools_instance)
-                raise
+            tools_instance = resolve_tools_instance()
+            method = resolve_method(tools_instance)
+            result = await call_sdk_method(tools_instance, method)
     else:
-        result = await call_sdk_method()
+        tools_instance = resolve_tools_instance()
+        method = resolve_method(tools_instance)
+        result = await call_sdk_method(tools_instance, method)
 
     return _serialize(result)
 
@@ -466,6 +501,11 @@ def register_tools(mcp: FastMCP, config: Config) -> None:
 
             # Build the per-tool input model (original, extended, or pinned).
             model: type[BaseModel] = definition.input_model
+            if (
+                definition.surface == "agent"
+                and definition.name in AGENT_EVENT_COMPAT_TOOL_NAMES
+            ):
+                model = _widen_agent_event_message_type(model)
             if is_agent_room_bound:
                 model = _extend_with_chat_id(model, pinned_room_id)
             elif is_human_room_bound and pinned_room_id is not None:

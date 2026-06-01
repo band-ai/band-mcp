@@ -65,7 +65,7 @@ Configure your AI assistant to use the Thenvoi MCP Server with the following JSO
       "command": "thenvoi-mcp",
       "args": [
         "--scope",
-        "agent",
+        "agent,human",
         "--tools",
         "contacts"
       ],
@@ -453,8 +453,7 @@ registered when an agent/user key was present. The new default is `--tools []`
 pass `--tools contacts` (or set `THENVOI_MCP_TOOLS=contacts`). Memory tools
 remain opt-in via `--tools memory`.
 
-Unknown `--scope` / `--tools` values do not fail startup; they're logged at
-WARN with a "did you mean?" hint, e.g.:
+Unknown `--scope` / `--tools` values are logged at WARN with a "did you mean?" hint. Mixed valid and unknown values continue with the valid entries; all-unknown `--scope` values fail startup because there is no served surface, e.g.:
 
 ```
 WARN  unknown --tools value 'contact' — did you mean 'contacts'? ignoring.

@@ -109,29 +109,18 @@ logger.info("Processing request")
 logger.error("Failed to connect", exc_info=True)
 ```
 
-### Writing Tools
+### Writing Platform Tools
 
-All MCP tools must follow this pattern:
-```python
-from thenvoi_mcp.shared import mcp, get_app_context, AppContextType
+Platform tools are defined in `thenvoi-sdk` and registered through `thenvoi_mcp.tools.registrar.register_tools`. Do not add new handwritten per-tool handlers under this repo's `tools/agent/` or `tools/human/` packages; update the SDK tool definition and method implementation instead.
 
-@mcp.tool()
-def my_tool(ctx: AppContextType, param: str) -> str:
-    """Tool description for AI assistants.
-
-    Provide a clear description of what the tool does,
-    as this will be shown to AI assistants.
-    """
-    client = get_app_context(ctx).client
-    # Use client.human_api.* or client.agent_api.*
-    return "Success message or JSON string"
-```
+Use a handwritten `@mcp.tool()` only for server diagnostics that are not SDK platform tools. `health_check` is the current example.
 
 Key requirements:
-- Use `@mcp.tool()` decorator
-- First parameter must be `ctx: AppContextType`
-- Return type must be `str`
-- Include a descriptive docstring
+- Keep SDK platform tool names and schemas sourced from `thenvoi.runtime.tools.iter_tool_definitions`
+- Keep MCP transport-only behavior, such as pinned room injection, in `thenvoi_mcp.tools.registrar`
+- Use `AppContext.human_rest`, `AppContext.agent_rest`, or the shared SDK tool helpers instead of the removed `AppContext.client` slot
+- Return strings (success messages or JSON)
+- Include descriptive docs on any handwritten diagnostic tool
 
 ### Imports
 

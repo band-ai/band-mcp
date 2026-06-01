@@ -20,6 +20,7 @@ from thenvoi_mcp.shared import (
     AGENT_TOOLS_CACHE_MAX_SIZE,
     AGENT_TOOLS_LOCK_STRIPES,
     AppContext,
+    build_app_context,
     discard_agent_tools,
     get_agent_tools,
     get_agent_tools_lock,
@@ -31,6 +32,71 @@ def _make_ctx(app_context: AppContext) -> object:
     """Build a minimal ctx object matching AppContextType for the helpers."""
     request_context = SimpleNamespace(lifespan_context=app_context)
     return SimpleNamespace(request_context=request_context)
+
+
+# ---------------------------------------------------------------------------
+# build_app_context: legacy fallback
+# ---------------------------------------------------------------------------
+
+
+def test_build_app_context_legacy_user_key_builds_only_human_client(monkeypatch):
+    constructed: list[str] = []
+
+    class FakeRestClient:
+        def __init__(self, api_key: str, base_url: str):
+            self.api_key = api_key
+            self.base_url = base_url
+            constructed.append(api_key)
+
+    monkeypatch.setattr(shared_mod.settings, "thenvoi_api_key", "thnv_u_abc")
+    monkeypatch.setattr(shared_mod, "AsyncRestClient", FakeRestClient)
+
+    app_ctx = build_app_context(None)
+
+    assert app_ctx.human_rest is not None
+    assert app_ctx.agent_rest is None
+    assert constructed == ["thnv_u_abc"]
+
+
+def test_build_app_context_legacy_agent_key_builds_only_agent_client(monkeypatch):
+    constructed: list[str] = []
+
+    class FakeRestClient:
+        def __init__(self, api_key: str, base_url: str):
+            self.api_key = api_key
+            self.base_url = base_url
+            constructed.append(api_key)
+
+    monkeypatch.setattr(shared_mod.settings, "thenvoi_api_key", "thnv_a_abc")
+    monkeypatch.setattr(shared_mod, "AsyncRestClient", FakeRestClient)
+
+    app_ctx = build_app_context(None)
+
+    assert app_ctx.human_rest is None
+    assert app_ctx.agent_rest is not None
+    assert constructed == ["thnv_a_abc"]
+
+
+def test_build_app_context_constructs_only_served_scope_clients(monkeypatch):
+    constructed: list[str] = []
+
+    class FakeRestClient:
+        def __init__(self, api_key: str, base_url: str):
+            self.api_key = api_key
+            self.base_url = base_url
+            constructed.append(api_key)
+
+    monkeypatch.setattr(shared_mod, "AsyncRestClient", FakeRestClient)
+
+    app_ctx = build_app_context(
+        shared_mod.Config(
+            scope=["agent"], user_key="thnv_u_unused", agent_key="thnv_a_used"
+        )
+    )
+
+    assert app_ctx.human_rest is None
+    assert app_ctx.agent_rest is not None
+    assert constructed == ["thnv_a_used"]
 
 
 # ---------------------------------------------------------------------------

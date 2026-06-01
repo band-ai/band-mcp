@@ -5,11 +5,11 @@
 `agent_key` or an agent-capable legacy key). Either may be None when the
 corresponding scope is not served by the current config.
 
-HumanTools / AgentTools coordination with INT-349
+HumanTools / AgentTools coordination with the SDK
 -------------------------------------------------
-The SDK's `HumanTools` class lives in `thenvoi-sdk-python` (INT-349).
-`get_human_tools()` / `get_agent_tools()` import it lazily and guard the
-import: if either import fails, the helper logs a WARN and returns `None`.
+The SDK's `HumanTools` and `AgentTools` classes live in `thenvoi-sdk-python`.
+`get_human_tools()` / `get_agent_tools()` use startup-validated SDK classes;
+missing SDK imports raise `ConfigError` because the SDK is a hard dependency.
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ from thenvoi_rest import AsyncRestClient
 from thenvoi_mcp.config import (
     Config,
     ConfigError,
+    _legacy_key_capabilities,
     settings,
     resolve_credential_for_scope,
 )
@@ -133,27 +134,26 @@ def build_app_context(
     never use.
 
     If `config` is None, we fall back to the legacy `THENVOI_API_KEY` path:
-    the async slots are populated from the single legacy key, tried against
-    both human and agent scopes based on the key prefix (server.run rewrites
-    `config.scope` to match). If `settings.thenvoi_api_key` is also unset,
-    the AppContext is returned with both slots None — tool calls will fail
-    at request time with a structured error.
+    the async slots are populated from the single legacy key only for scopes its
+    prefix can serve. If `settings.thenvoi_api_key` is unset, the AppContext is
+    returned with both slots None — tool calls will fail at request time with a
+    structured error.
     """
     base_url = settings.thenvoi_base_url
 
     if config is None:
-        # Legacy path with no resolved Config. Build both clients from the
-        # legacy key if set; either can be None if the key can't serve that
-        # scope (e.g. thnv_u_* cannot serve agent calls).
+        # Legacy path with no resolved Config. Build clients only for scopes the
+        # legacy key prefix can serve (e.g. thnv_u_* cannot serve agent calls).
         legacy_key = settings.thenvoi_api_key or ""
+        legacy_human, legacy_agent = _legacy_key_capabilities(legacy_key)
         human_rest = (
             AsyncRestClient(api_key=legacy_key, base_url=base_url)
-            if legacy_key
+            if legacy_key and legacy_human
             else None
         )
         agent_rest = (
             AsyncRestClient(api_key=legacy_key, base_url=base_url)
-            if legacy_key
+            if legacy_key and legacy_agent
             else None
         )
         return AppContext(human_rest=human_rest, agent_rest=agent_rest)
@@ -161,8 +161,16 @@ def build_app_context(
     human_rest: AsyncRestClient | None = None
     agent_rest: AsyncRestClient | None = None
 
-    human_cred = resolve_credential_for_scope(config, "human")
-    agent_cred = resolve_credential_for_scope(config, "agent")
+    human_cred = (
+        resolve_credential_for_scope(config, "human")
+        if "human" in config.scope
+        else None
+    )
+    agent_cred = (
+        resolve_credential_for_scope(config, "agent")
+        if "agent" in config.scope
+        else None
+    )
 
     if human_cred is not None:
         human_rest = AsyncRestClient(api_key=human_cred, base_url=base_url)
@@ -237,15 +245,14 @@ def get_human_tools(ctx: AppContextType) -> Any:
     once in `build_app_context` from the human `AsyncRestClient`; there is no
     per-request reconstruction.
 
-    Returns None when the SDK isn't installed (INT-349 not yet merged) or when
-    the deployment has no human credential. The caller is responsible for
-    surfacing that as an actionable error.
+    Returns None when the deployment has no human credential. Missing SDK
+    imports raise ConfigError before the server advertises tools.
     """
     app_ctx = get_app_context(ctx)
     if app_ctx.human_tools is None:
         logger.warning(
-            "get_human_tools(): HumanTools not available. Ensure the Thenvoi "
-            "SDK (INT-349) is installed and a human credential is configured."
+            "get_human_tools(): HumanTools not available. Ensure a human "
+            "credential is configured for the human scope."
         )
     return app_ctx.human_tools
 

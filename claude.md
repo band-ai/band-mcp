@@ -14,25 +14,17 @@ MCP (Model Context Protocol) server that connects AI assistants to the Thenvoi p
 - `thnv_a_*` → Agent keys → Only agent tools loaded
 - `thnv_*` → Legacy keys → All tools loaded
 
-## Tool Template
+## Tool Registration
 
-```python
-from thenvoi_mcp.shared import mcp, get_app_context, AppContextType
+MCP platform tools are registered through `thenvoi_mcp.tools.registrar.register_tools`, which consumes `thenvoi.runtime.tools.iter_tool_definitions` from the SDK. Do not add handwritten per-tool handlers under `tools/agent/` or `tools/human/`; add or update the SDK tool definition instead, then adapt the registrar only when MCP transport behavior differs from the SDK method contract.
 
-@mcp.tool()
-def my_tool(ctx: AppContextType, param: str) -> str:
-    """Tool description for AI assistants."""
-    client = get_app_context(ctx).client
-    # Use client.human_api.* or client.agent_api.*
-    return "Success message"
-```
+The only handwritten MCP tool in this repo is `health_check`, which is a server diagnostic rather than a platform SDK tool.
 
 ## Repo-Specific Conventions
 
 - Use the shared logger: `from thenvoi_mcp.shared import logger`
-- All tools must use the `@mcp.tool()` decorator
-- Tools must accept `ctx: AppContextType` as the first parameter
-- Use `get_app_context(ctx).client` to access the Thenvoi API client
+- Platform tools must come from the SDK-driven registrar, not `@mcp.tool()` decorators
+- Runtime dependencies live on `AppContext` as `human_rest`, `agent_rest`, and `human_tools`; agent tools are constructed with `get_agent_tools(ctx, room_id)`
 - Tools must return strings (success messages or JSON)
 
 ## Commands
