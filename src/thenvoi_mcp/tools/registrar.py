@@ -313,6 +313,13 @@ async def _invoke(
             f"{type(tools_instance).__name__}"
         )
 
+    if surface == "agent" and method_name == "send_message":
+        refresh_participants = getattr(tools_instance, "get_participants", None)
+        if callable(refresh_participants):
+            refreshed = refresh_participants()
+            if inspect.isawaitable(refreshed):
+                await refreshed
+
     result = method(**call_kwargs)
     if inspect.isawaitable(result):
         result = await result

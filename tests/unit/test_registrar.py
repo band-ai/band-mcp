@@ -246,6 +246,7 @@ async def test_unpinned_agent_handler_calls_get_agent_tools_with_chat_id(
 ) -> None:
     # Fake AgentTools method
     fake_agent_tools = MagicMock()
+    fake_agent_tools.get_participants = AsyncMock(return_value=[])
     fake_agent_tools.send_message = AsyncMock(return_value={"ok": True})
 
     get_agent_tools_spy = MagicMock(return_value=fake_agent_tools)
@@ -274,7 +275,9 @@ async def test_unpinned_agent_handler_calls_get_agent_tools_with_chat_id(
     reset_spy.assert_called_once_with(ctx)
     get_agent_tools_spy.assert_called_once_with(ctx, "r1")
     # chat_id must NOT reach the AgentTools method call — AgentTools is
-    # constructor-scoped and its methods don't take chat_id.
+    # constructor-scoped and its methods don't take chat_id. The MCP layer
+    # refreshes participants first so SDK mention resolution sees room members.
+    fake_agent_tools.get_participants.assert_awaited_once_with()
     fake_agent_tools.send_message.assert_awaited_once()
     call_kwargs = fake_agent_tools.send_message.await_args.kwargs
     assert "chat_id" not in call_kwargs
