@@ -179,6 +179,30 @@ def test_legacy_fallback_when_scope_key_empty():
     assert resolve_credential_for_scope(cfg, "agent") == "thnv_abc"
 
 
+@pytest.mark.parametrize(
+    ("legacy_key", "expected_human", "expected_agent"),
+    [
+        ("band_u_abc", True, False),
+        ("band_a_abc", False, True),
+        ("band_abc", True, True),
+    ],
+)
+def test_band_prefixed_legacy_key_capabilities(
+    legacy_key: str, expected_human: bool, expected_agent: bool
+) -> None:
+    cfg = resolve_config(cli={}, env={"THENVOI_API_KEY": legacy_key})
+
+    if expected_human:
+        assert resolve_credential_for_scope(cfg, "human") == legacy_key
+    else:
+        assert resolve_credential_for_scope(cfg, "human") is None
+
+    if expected_agent:
+        assert resolve_credential_for_scope(cfg, "agent") == legacy_key
+    else:
+        assert resolve_credential_for_scope(cfg, "agent") is None
+
+
 # ---------------------------------------------------------------------------
 # Room id
 # ---------------------------------------------------------------------------
