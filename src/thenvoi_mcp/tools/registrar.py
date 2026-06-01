@@ -4,8 +4,8 @@ Replaces the handwritten per-tool ``@mcp.tool()`` registrations with a
 scope-filtered loop over ``thenvoi.runtime.tools.iter_tool_definitions(...)``.
 Each handler is a closure that:
 
-1. Resets the per-request AgentTools cache on ``AppContext``.
-2. Resolves the room id from validated input (or injects ``pinned_room_id``).
+1. Resolves the room id from validated input (or injects ``pinned_room_id``).
+2. Reuses the room-scoped ``AgentTools`` cache on ``AppContext``.
 3. Dispatches to the Phase-1 ``HumanTools`` / ``AgentTools`` SDK method.
 
 Design deviation from the Phase 3 spec (resolved with the ticket author)
@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import inspect
 import json
-from typing import Annotated, Any, Callable
+from typing import Annotated, Any, Callable, cast
 
 from mcp.server.fastmcp import FastMCP
 from pydantic import AliasChoices, BaseModel, Field, ValidationError, create_model
@@ -47,10 +47,11 @@ from pydantic.json_schema import SkipJsonSchema
 from thenvoi_mcp.config import Config, ConfigError
 from thenvoi_mcp.shared import (
     AppContextType,
+    discard_agent_tools,
     get_agent_tools,
+    get_agent_tools_lock,
     get_human_tools,
     logger,
-    reset_agent_tools_cache,
 )
 
 # ---------------------------------------------------------------------------
@@ -265,7 +266,6 @@ async def _invoke(
     kwargs: dict[str, Any],
 ) -> str:
     """The actual async dispatch body shared by every generated handler."""
-    reset_agent_tools_cache(ctx)
 
     # Inject pinned room id BEFORE validation so the input model's chat_id
     # field is populated from the pin even though it is hidden from the
@@ -281,6 +281,7 @@ async def _invoke(
 
     call_kwargs = validated.model_dump(exclude_none=True, by_alias=False)
 
+    agent_cache_key: str | None = None
     if surface == "agent":
         # Agent tools: pull chat_id out of kwargs and scope AgentTools to it.
         if is_agent_room_bound:
@@ -289,14 +290,15 @@ async def _invoke(
                 raise ValueError(
                     f"{tool_name}: missing chat_id (or room_id) for room-bound tool"
                 )
+            agent_cache_key = chat_id
             tools_instance = get_agent_tools(ctx, chat_id)
         else:
             # Room-less agent tool (e.g. ``thenvoi_create_chatroom``). The
-            # SDK's ``AgentTools`` is constructor-scoped, but such tools
-            # only touch ``self.rest`` — we can safely construct with the
-            # pinned room id (or an empty placeholder if none is set) and
-            # dispatch.
-            tools_instance = get_agent_tools(ctx, pinned_room_id or "")
+            # SDK's ``AgentTools`` is constructor-scoped, but such tools only
+            # touch ``self.rest``. Keep them on the dedicated None cache key so
+            # they never share participant state with a room-scoped instance,
+            # while still passing a string sentinel to the SDK constructor.
+            tools_instance = get_agent_tools(ctx, None, sdk_room_id="")
     else:
         tools_instance = get_human_tools(ctx)
 
@@ -306,23 +308,37 @@ async def _invoke(
             "no credential configured for this scope)"
         )
 
-    method = getattr(tools_instance, method_name, None)
-    if method is None or not callable(method):
+    raw_method = getattr(tools_instance, method_name, None)
+    if raw_method is None or not callable(raw_method):
         raise RuntimeError(
             f"{tool_name}: method '{method_name}' not found on "
             f"{type(tools_instance).__name__}"
         )
+    method = cast(Callable[..., Any], raw_method)
 
-    if surface == "agent" and method_name == "send_message":
-        refresh_participants = getattr(tools_instance, "get_participants", None)
-        if callable(refresh_participants):
-            refreshed = refresh_participants()
-            if inspect.isawaitable(refreshed):
-                await refreshed
+    async def call_sdk_method() -> Any:
+        if surface == "agent" and method_name == "send_message":
+            refresh_participants = getattr(tools_instance, "get_participants", None)
+            if callable(refresh_participants):
+                refreshed = refresh_participants()
+                if inspect.isawaitable(refreshed):
+                    await refreshed
 
-    result = method(**call_kwargs)
-    if inspect.isawaitable(result):
-        result = await result
+        result = method(**call_kwargs)
+        if inspect.isawaitable(result):
+            result = await result
+        return result
+
+    if surface == "agent":
+        lock = get_agent_tools_lock(ctx, agent_cache_key)
+        async with lock:
+            try:
+                result = await call_sdk_method()
+            except Exception:
+                discard_agent_tools(ctx, agent_cache_key, tools_instance)
+                raise
+    else:
+        result = await call_sdk_method()
 
     return _serialize(result)
 

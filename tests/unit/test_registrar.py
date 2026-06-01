@@ -8,7 +8,7 @@ Covers Phase 3 (INT-351) acceptance criteria:
 - Pinned mode hides ``chat_id`` from advertised schema for both surfaces.
 - Handler invokes ``get_agent_tools(ctx, chat_id)`` / ``get_human_tools(ctx)``.
 - Handler strips ``chat_id`` from kwargs before calling ``AgentTools.<method>``.
-- Handler re-calls ``reset_agent_tools_cache(ctx)`` at the start of each invocation.
+- Handler keeps room-scoped ``AgentTools`` instances cached across calls.
 - Room-less tools are registered unchanged regardless of pin state.
 """
 
@@ -40,6 +40,21 @@ from thenvoi_mcp.tools.registrar import (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+class _NoopAsyncLock:
+    async def __aenter__(self) -> None:
+        return None
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+
+@pytest.fixture(autouse=True)
+def _patch_agent_tools_lock(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        registrar, "get_agent_tools_lock", MagicMock(return_value=_NoopAsyncLock())
+    )
 
 
 def _registered_names(mcp: FastMCP) -> set[str]:
@@ -196,6 +211,37 @@ def test_agent_room_less_tool_not_classified_room_bound() -> None:
     assert is_human is False
 
 
+async def test_room_less_agent_tool_uses_none_cache_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_agent_tools = MagicMock()
+    fake_agent_tools.create_chatroom = AsyncMock(return_value="room_created")
+    get_agent_tools_spy = MagicMock(return_value=fake_agent_tools)
+    monkeypatch.setattr(registrar, "get_agent_tools", get_agent_tools_spy)
+
+    definition = TOOL_DEFINITIONS["thenvoi_create_chatroom"]
+
+    from thenvoi_mcp.tools.registrar import _invoke
+
+    out = await _invoke(
+        surface="agent",
+        tool_name=definition.name,
+        method_name=definition.method_name,
+        input_model=definition.input_model,
+        pinned_room_id="r_pinned",
+        is_agent_room_bound=False,
+        is_human_room_bound=False,
+        ctx=MagicMock(),
+        kwargs={},
+    )
+
+    get_agent_tools_spy.assert_called_once()
+    assert get_agent_tools_spy.call_args.args[1] is None
+    assert get_agent_tools_spy.call_args.kwargs == {"sdk_room_id": ""}
+    fake_agent_tools.create_chatroom.assert_awaited_once_with()
+    assert "room_created" in out
+
+
 def test_human_chat_id_tool_classified_room_bound() -> None:
     definition = TOOL_DEFINITIONS["thenvoi_send_my_chat_message"]
     is_agent, is_human = _classify_tool(definition)
@@ -250,10 +296,8 @@ async def test_unpinned_agent_handler_calls_get_agent_tools_with_chat_id(
     fake_agent_tools.send_message = AsyncMock(return_value={"ok": True})
 
     get_agent_tools_spy = MagicMock(return_value=fake_agent_tools)
-    reset_spy = MagicMock()
 
     monkeypatch.setattr(registrar, "get_agent_tools", get_agent_tools_spy)
-    monkeypatch.setattr(registrar, "reset_agent_tools_cache", reset_spy)
     monkeypatch.setattr(registrar, "get_human_tools", MagicMock())
 
     definition = TOOL_DEFINITIONS["thenvoi_send_message"]
@@ -272,7 +316,6 @@ async def test_unpinned_agent_handler_calls_get_agent_tools_with_chat_id(
     ctx = MagicMock()
     out = await handler(ctx=ctx, content="hello", mentions=["@bob"], chat_id="r1")
 
-    reset_spy.assert_called_once_with(ctx)
     get_agent_tools_spy.assert_called_once_with(ctx, "r1")
     # chat_id must NOT reach the AgentTools method call — AgentTools is
     # constructor-scoped and its methods don't take chat_id. The MCP layer
@@ -292,7 +335,6 @@ async def test_unpinned_agent_handler_accepts_room_id_alias(
     fake_agent_tools.send_message = AsyncMock(return_value={"ok": True})
     get_agent_tools_spy = MagicMock(return_value=fake_agent_tools)
     monkeypatch.setattr(registrar, "get_agent_tools", get_agent_tools_spy)
-    monkeypatch.setattr(registrar, "reset_agent_tools_cache", MagicMock())
     monkeypatch.setattr(registrar, "get_human_tools", MagicMock())
 
     definition = TOOL_DEFINITIONS["thenvoi_send_message"]
@@ -364,7 +406,6 @@ async def test_pinned_agent_handler_injects_room_id(
     fake_agent_tools.send_message = AsyncMock(return_value={"ok": True})
     get_agent_tools_spy = MagicMock(return_value=fake_agent_tools)
     monkeypatch.setattr(registrar, "get_agent_tools", get_agent_tools_spy)
-    monkeypatch.setattr(registrar, "reset_agent_tools_cache", MagicMock())
     monkeypatch.setattr(registrar, "get_human_tools", MagicMock())
 
     definition = TOOL_DEFINITIONS["thenvoi_send_message"]
@@ -392,7 +433,6 @@ async def test_pinned_agent_handler_overrides_caller_chat_id(
     fake_agent_tools.send_message = AsyncMock(return_value={"ok": True})
     get_agent_tools_spy = MagicMock(return_value=fake_agent_tools)
     monkeypatch.setattr(registrar, "get_agent_tools", get_agent_tools_spy)
-    monkeypatch.setattr(registrar, "reset_agent_tools_cache", MagicMock())
     monkeypatch.setattr(registrar, "get_human_tools", MagicMock())
 
     definition = TOOL_DEFINITIONS["thenvoi_send_message"]
@@ -443,7 +483,6 @@ async def test_unpinned_human_handler_passes_chat_id_through(
     monkeypatch.setattr(
         registrar, "get_human_tools", MagicMock(return_value=fake_human_tools)
     )
-    monkeypatch.setattr(registrar, "reset_agent_tools_cache", MagicMock())
     monkeypatch.setattr(registrar, "get_agent_tools", MagicMock())
 
     definition = TOOL_DEFINITIONS["thenvoi_send_my_chat_message"]
@@ -474,7 +513,6 @@ async def test_pinned_human_handler_injects_chat_id(
     monkeypatch.setattr(
         registrar, "get_human_tools", MagicMock(return_value=fake_human_tools)
     )
-    monkeypatch.setattr(registrar, "reset_agent_tools_cache", MagicMock())
     monkeypatch.setattr(registrar, "get_agent_tools", MagicMock())
 
     definition = TOOL_DEFINITIONS["thenvoi_send_my_chat_message"]
@@ -546,21 +584,19 @@ async def test_room_less_list_my_contacts_unchanged_by_pin() -> None:
 
 
 # ---------------------------------------------------------------------------
-# reset_agent_tools_cache is called at start of each invocation
+# AgentTools cache is preserved across invocations
 # ---------------------------------------------------------------------------
 
 
-async def test_reset_agent_tools_cache_called_on_every_invocation(
+async def test_agent_tools_cache_is_not_reset_between_invocations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_agent_tools = MagicMock()
+    fake_agent_tools.get_participants = AsyncMock(return_value=[])
     fake_agent_tools.send_message = AsyncMock(return_value={"ok": True})
 
-    reset_spy = MagicMock()
-    monkeypatch.setattr(registrar, "reset_agent_tools_cache", reset_spy)
-    monkeypatch.setattr(
-        registrar, "get_agent_tools", MagicMock(return_value=fake_agent_tools)
-    )
+    get_agent_tools_spy = MagicMock(return_value=fake_agent_tools)
+    monkeypatch.setattr(registrar, "get_agent_tools", get_agent_tools_spy)
     monkeypatch.setattr(registrar, "get_human_tools", MagicMock())
 
     definition = TOOL_DEFINITIONS["thenvoi_send_message"]
@@ -579,7 +615,40 @@ async def test_reset_agent_tools_cache_called_on_every_invocation(
     await handler(ctx=ctx, content="a", mentions=["@x"], chat_id="r1")
     await handler(ctx=ctx, content="b", mentions=["@x"], chat_id="r1")
 
-    assert reset_spy.call_count == 2
+    assert get_agent_tools_spy.call_count == 2
+    assert not hasattr(registrar, "reset_agent_tools_cache")
+
+
+async def test_agent_tools_cache_entry_is_discarded_when_sdk_call_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_agent_tools = MagicMock()
+    fake_agent_tools.get_participants = AsyncMock(return_value=[])
+    fake_agent_tools.send_message = AsyncMock(side_effect=PermissionError("denied"))
+
+    get_agent_tools_spy = MagicMock(return_value=fake_agent_tools)
+    discard_spy = MagicMock()
+    monkeypatch.setattr(registrar, "get_agent_tools", get_agent_tools_spy)
+    monkeypatch.setattr(registrar, "discard_agent_tools", discard_spy)
+    monkeypatch.setattr(registrar, "get_human_tools", MagicMock())
+
+    definition = TOOL_DEFINITIONS["thenvoi_send_message"]
+    extended = _extend_with_chat_id(definition.input_model, None)
+    handler = make_handler(
+        tool_name=definition.name,
+        surface="agent",
+        method_name=definition.method_name,
+        input_model=extended,
+        pinned_room_id=None,
+        is_agent_room_bound=True,
+        is_human_room_bound=False,
+    )
+
+    ctx = MagicMock()
+    with pytest.raises(PermissionError, match="denied"):
+        await handler(ctx=ctx, content="a", mentions=["@x"], chat_id="bad_room")
+
+    discard_spy.assert_called_once_with(ctx, "bad_room", fake_agent_tools)
 
 
 # ---------------------------------------------------------------------------

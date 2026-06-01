@@ -34,7 +34,6 @@ from thenvoi_mcp.shared import (
 from thenvoi_mcp.tools.registrar import register_tools
 
 
-
 @mcp.tool()
 async def health_check(ctx: AppContextType) -> str:
     """Test MCP server and API connectivity."""
@@ -266,7 +265,6 @@ def run() -> None:
         # operators see the actionable message instead of a traceback.
         logger.error("Configuration error: %s", exc)
         raise SystemExit(2) from exc
-
 
     # Determine transport mode (CLI args override env vars)
     transport: Literal["stdio", "sse"] = args.transport or settings.transport

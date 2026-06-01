@@ -1,9 +1,9 @@
 """Unit tests for `thenvoi_mcp.shared`.
 
 Covers acceptance criterion #11 from INT-350: `get_human_tools` returns a
-singleton, `get_agent_tools` caches per-room, `reset_agent_tools_cache` clears
-the cache. INT-352 hardened SDK import to fail-hard (ConfigError) rather than
-fail-soft — tests below reflect that.
+singleton and `get_agent_tools` caches per room for the server lifespan.
+INT-352 hardened SDK import to fail-hard (ConfigError) rather than fail-soft —
+tests below reflect that.
 """
 
 from __future__ import annotations
@@ -17,10 +17,13 @@ import pytest
 from thenvoi_mcp import shared as shared_mod
 from thenvoi_mcp.config import ConfigError
 from thenvoi_mcp.shared import (
+    AGENT_TOOLS_CACHE_MAX_SIZE,
+    AGENT_TOOLS_LOCK_STRIPES,
     AppContext,
+    discard_agent_tools,
     get_agent_tools,
+    get_agent_tools_lock,
     get_human_tools,
-    reset_agent_tools_cache,
 )
 
 
@@ -101,7 +104,21 @@ def test_get_agent_tools_returns_distinct_instance_per_room(monkeypatch):
     assert b.room_id == "room_B"
 
 
-def test_get_agent_tools_accepts_none_for_room_less_agent_tools(monkeypatch):
+def test_get_agent_tools_locks_use_fixed_stripes():
+    app_ctx = AppContext(agent_rest=MagicMock())
+    ctx = _make_ctx(app_ctx)
+
+    a1 = get_agent_tools_lock(ctx, "room_A")
+    a2 = get_agent_tools_lock(ctx, "room_A")
+    roomless = get_agent_tools_lock(ctx, None)
+
+    assert a1 is a2
+    assert a1 in app_ctx._agent_tools_locks
+    assert roomless in app_ctx._agent_tools_locks
+    assert len(app_ctx._agent_tools_locks) == AGENT_TOOLS_LOCK_STRIPES
+
+
+def test_get_agent_tools_cache_evicts_oldest_room(monkeypatch):
     fake_agent_rest = MagicMock()
     app_ctx = AppContext(agent_rest=fake_agent_rest)
     ctx = _make_ctx(app_ctx)
@@ -112,13 +129,39 @@ def test_get_agent_tools_accepts_none_for_room_less_agent_tools(monkeypatch):
 
     monkeypatch.setattr(shared_mod, "_try_import_agent_tools", lambda: FakeAgentTools)
 
-    result = get_agent_tools(ctx, None)
+    for i in range(AGENT_TOOLS_CACHE_MAX_SIZE):
+        get_agent_tools(ctx, f"room_{i}")
 
-    assert result.room_id is None
+    first = get_agent_tools(ctx, "room_0")
+    assert first is get_agent_tools(ctx, "room_0")
+    assert len(app_ctx._agent_tools_cache) == AGENT_TOOLS_CACHE_MAX_SIZE
+
+    get_agent_tools(ctx, "room_overflow")
+
+    assert len(app_ctx._agent_tools_cache) == AGENT_TOOLS_CACHE_MAX_SIZE
+    assert "room_0" in app_ctx._agent_tools_cache
+    assert "room_1" not in app_ctx._agent_tools_cache
+    assert "room_overflow" in app_ctx._agent_tools_cache
+
+
+def test_get_agent_tools_accepts_none_cache_key_with_sdk_room_sentinel(monkeypatch):
+    fake_agent_rest = MagicMock()
+    app_ctx = AppContext(agent_rest=fake_agent_rest)
+    ctx = _make_ctx(app_ctx)
+
+    class FakeAgentTools:
+        def __init__(self, room_id: str, rest: object):
+            self.room_id = room_id
+
+    monkeypatch.setattr(shared_mod, "_try_import_agent_tools", lambda: FakeAgentTools)
+
+    result = get_agent_tools(ctx, None, sdk_room_id="")
+
+    assert result.room_id == ""
     assert app_ctx._agent_tools_cache == {None: result}
 
 
-def test_reset_agent_tools_cache_clears_entries(monkeypatch):
+def test_discard_agent_tools_only_drops_current_instance(monkeypatch):
     fake_agent_rest = MagicMock()
     app_ctx = AppContext(agent_rest=fake_agent_rest)
     ctx = _make_ctx(app_ctx)
@@ -129,15 +172,14 @@ def test_reset_agent_tools_cache_clears_entries(monkeypatch):
 
     monkeypatch.setattr(shared_mod, "_try_import_agent_tools", lambda: FakeAgentTools)
 
-    before = get_agent_tools(ctx, "room_A")
-    assert app_ctx._agent_tools_cache == {"room_A": before}
+    original = get_agent_tools(ctx, "room_A")
+    replacement = object()
 
-    reset_agent_tools_cache(ctx)
-    assert app_ctx._agent_tools_cache == {}
+    discard_agent_tools(ctx, "room_A", replacement)
+    assert app_ctx._agent_tools_cache["room_A"] is original
 
-    # A subsequent call produces a fresh instance.
-    after = get_agent_tools(ctx, "room_A")
-    assert after is not before
+    discard_agent_tools(ctx, "room_A", original)
+    assert "room_A" not in app_ctx._agent_tools_cache
 
 
 def test_get_agent_tools_returns_none_without_agent_credential(caplog):

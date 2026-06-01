@@ -14,9 +14,11 @@ import: if either import fails, the helper logs a WARN and returns `None`.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import sys
+from collections import OrderedDict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -40,6 +42,9 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 logger = logging.getLogger(__name__)
+
+AGENT_TOOLS_CACHE_MAX_SIZE = 128
+AGENT_TOOLS_LOCK_STRIPES = 64
 
 
 @dataclass
@@ -65,10 +70,20 @@ class AppContext:
     scope: list[str] = field(default_factory=list)
     tools: list[str] = field(default_factory=list)
 
-    # Per-request cache for AgentTools keyed by room_id. Room-less agent tools
-    # use None as the cache key. The registrar clears this at the start of each
-    # tool call; see `get_agent_tools`.
-    _agent_tools_cache: dict[str | None, Any] = field(default_factory=dict)
+    # Lifespan cache for AgentTools keyed by room_id. Room-less agent tools use
+    # None as the cache key. Cached room instances preserve SDK participant
+    # state across sequential MCP tool calls in the same server process.
+    _agent_tools_cache: OrderedDict[str | None, Any] = field(
+        default_factory=OrderedDict
+    )
+
+    # Fixed lock stripes serialize calls that may share a mutable AgentTools
+    # instance without letting caller-controlled room ids grow lock storage.
+    _agent_tools_locks: list[asyncio.Lock] = field(
+        default_factory=lambda: [
+            asyncio.Lock() for _ in range(AGENT_TOOLS_LOCK_STRIPES)
+        ]
+    )
 
 
 AppContextType = Context[ServerSession, AppContext, None]
@@ -235,15 +250,19 @@ def get_human_tools(ctx: AppContextType) -> Any:
     return app_ctx.human_tools
 
 
-def get_agent_tools(ctx: AppContextType, room_id: str | None) -> Any:
+def get_agent_tools(
+    ctx: AppContextType,
+    room_id: str | None,
+    *,
+    sdk_room_id: str | None = None,
+) -> Any:
     """Return an `AgentTools` instance scoped to `room_id`.
 
-    Per-request cache: Phase 3 can call this multiple times in the same tool
-    invocation (participant-resolution paths walk back to the room) and must
-    not construct twice. The registrar is responsible for clearing the cache
-    at the start of each request; within a single call, repeated
-    `get_agent_tools(ctx, "r1")` returns the same object. Room-less agent tools
-    pass None through to AgentTools.
+    Lifespan cache: repeated calls for the same room return the same SDK
+    `AgentTools` instance for as long as the MCP server process is alive. This
+    preserves SDK-side participant state across sequential MCP calls. Room-less
+    agent tools use None as the cache key and can pass a string sentinel via
+    `sdk_room_id` to satisfy the SDK constructor contract.
 
     Returns None when no agent credential is configured. Raises
     ``ConfigError`` (via ``_try_import_agent_tools``) when the SDK is not
@@ -260,27 +279,40 @@ def get_agent_tools(ctx: AppContextType, room_id: str | None) -> Any:
 
     cached = app_ctx._agent_tools_cache.get(room_id)
     if cached is not None:
+        app_ctx._agent_tools_cache.move_to_end(room_id)
         return cached
 
     AgentToolsCls = _try_import_agent_tools()
 
     try:
-        instance = AgentToolsCls(room_id=room_id, rest=app_ctx.agent_rest)
+        instance = AgentToolsCls(
+            room_id=room_id if sdk_room_id is None else sdk_room_id,
+            rest=app_ctx.agent_rest,
+        )
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to construct AgentTools for room %s: %s", room_id, exc)
         return None
 
     app_ctx._agent_tools_cache[room_id] = instance
+    app_ctx._agent_tools_cache.move_to_end(room_id)
+    while len(app_ctx._agent_tools_cache) > AGENT_TOOLS_CACHE_MAX_SIZE:
+        app_ctx._agent_tools_cache.popitem(last=False)
     return instance
 
 
-def reset_agent_tools_cache(ctx: AppContextType) -> None:
-    """Clear the per-request `AgentTools` cache.
+def discard_agent_tools(
+    ctx: AppContextType, room_id: str | None, instance: Any
+) -> None:
+    """Drop a cached `AgentTools` instance if it is still current."""
+    app_ctx = get_app_context(ctx)
+    if app_ctx._agent_tools_cache.get(room_id) is instance:
+        app_ctx._agent_tools_cache.pop(room_id, None)
 
-    The registrar calls this at the start of each tool invocation so the
-    cache's per-request semantics hold.
-    """
-    get_app_context(ctx)._agent_tools_cache.clear()
+
+def get_agent_tools_lock(ctx: AppContextType, room_id: str | None) -> asyncio.Lock:
+    """Return the lock stripe protecting a cached `AgentTools` instance."""
+    app_ctx = get_app_context(ctx)
+    return app_ctx._agent_tools_locks[hash(room_id) % len(app_ctx._agent_tools_locks)]
 
 
 def serialize_response(result: Any, **kwargs: Any) -> str:
