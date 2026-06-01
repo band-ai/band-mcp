@@ -421,9 +421,9 @@ def register_tools(mcp: FastMCP, config: Config) -> None:
         # healthy over the wire but serves nothing. Operators need an actionable
         # error at startup, not a puzzling "zero tools" advertisement.
         raise ConfigError(
-            "thenvoi-sdk >= 0.3.0 is required but is not importable "
+            "thenvoi-sdk >= 0.2.11 is required but is not importable "
             "(`from thenvoi.runtime.tools import iter_tool_definitions` failed: "
-            f"{exc}). Install/upgrade with `pip install 'thenvoi-sdk>=0.3.0'` "
+            f"{exc}). Install/upgrade with `pip install 'thenvoi-sdk>=0.2.11'` "
             "or `uv sync`."
         ) from exc
 

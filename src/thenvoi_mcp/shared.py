@@ -79,18 +79,18 @@ def _require_sdk_tools() -> tuple[Any, Any]:
 
     Raises ``ConfigError`` if the SDK package is not importable, so the
     operator gets a clear startup error instead of a silent empty tool
-    surface. Phase 4 (INT-352) pinned ``thenvoi-sdk>=0.3.0`` as a hard
-    dependency; a missing import now means the install is broken, not a
-    development-timeline race with INT-349.
+    surface. Phase 4 (INT-352) pinned ``thenvoi-sdk`` as a hard dependency;
+    a missing import now means the install is broken, not a development-
+    timeline race with INT-349.
     """
     try:
         from thenvoi.runtime.tools import AgentTools, HumanTools
     except ImportError as exc:
         raise ConfigError(
-            "thenvoi-sdk >= 0.3.0 is required but is not importable "
+            "thenvoi-sdk is required but is not importable "
             "(`from thenvoi.runtime.tools import HumanTools, AgentTools` "
             f"failed: {exc}). Install/upgrade with "
-            "`pip install 'thenvoi-sdk>=0.3.0'` or `uv sync`."
+            "`pip install 'thenvoi-sdk>=0.2.11'` or `uv sync`."
         ) from exc
     return HumanTools, AgentTools
 

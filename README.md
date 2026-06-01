@@ -14,7 +14,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that pr
 - STDIO transport for IDE integration; SSE transport for Docker and remote deployments
 - Tool definitions sourced from `thenvoi-sdk` so the MCP stays in lockstep with the platform SDK
 
-## Migrating from pre-INT-338 (pre-v1.2.0)
+## Migrating from pre-v1.2.0
 
 Every tool name changed. Tools are now prefixed with `thenvoi_`, and the agent surface was reshaped when the handwritten handlers were deleted in favor of the SDK-driven registrar. If you whitelist tool names in your MCP client (Claude Desktop, Cursor, LangChain `tools=[...]`), expect breakage until you update them.
 
@@ -31,22 +31,17 @@ Notable behavior changes:
 ### Prerequisites
 
 - Python 3.11 or higher
-- [uv](https://docs.astral.sh/uv/) package manager
 - Thenvoi API key from [app.thenvoi.com/settings/api-keys](https://app.thenvoi.com/settings/api-keys)
 
-### Installation
+### Install from PyPI
 
 ```bash
-# Clone the repository
-git clone https://github.com/thenvoi/thenvoi-mcp-server
-cd thenvoi-mcp-server
-
-# Copy environment template
-cp env.example .env
-
-# Add your API key to .env
-# THENVOI_API_KEY=your-api-key-here
+pip install band-mcp
+# or, if you use uv
+uv tool install band-mcp
 ```
+
+This installs the `thenvoi-mcp` CLI on your PATH. No repo clone, no `uv` directory flags, no absolute paths required.
 
 > **Getting Your API Key**
 >
@@ -54,19 +49,6 @@ cp env.example .env
 > 2. Navigate to **Settings → API Keys**
 > 3. Click **Create New API Key**
 > 4. Copy the key immediately (won't be shown again)
-
-**Install pre-commit hooks:**
-
-This repository uses automated code quality tools:
-
-* **Gitleaks** : Prevents secrets from being committed
-* **Ruff** : Fast linter and formatter for code style, imports, and PEP8 compliance
-
-```shell
-uv run pre-commit install
-```
-
-The hooks will automatically check and format your code before each commit.
 
 ## 📦 Install in Your IDE
 
@@ -80,12 +62,8 @@ Configure your AI assistant to use the Thenvoi MCP Server with the following JSO
 {
   "mcpServers": {
     "thenvoi": {
-      "command": "/ABSOLUTE/PATH/TO/uv",
+      "command": "thenvoi-mcp",
       "args": [
-        "--directory",
-        "/ABSOLUTE/PATH/TO/thenvoi-mcp-server",
-        "run",
-        "thenvoi-mcp",
         "--scope",
         "agent",
         "--tools",
@@ -101,7 +79,7 @@ Configure your AI assistant to use the Thenvoi MCP Server with the following JSO
 }
 ```
 
-> **Note:** Replace `/ABSOLUTE/PATH/TO/thenvoi-mcp-server` with the actual path where you cloned the repository.
+> **Note:** This assumes `band-mcp` is installed via `pip` or `uv tool install` so the `thenvoi-mcp` command is on your PATH. If you prefer to run from a local checkout, see the [Development setup](#-development) section.
 
 > **Legacy single-key setups (`THENVOI_API_KEY`) still work** — see the Configuration section below for details and the breaking-change note about `--tools contacts`.
 
@@ -154,13 +132,7 @@ The Thenvoi tools will appear in the tools panel.
 {
   "claude.mcpServers": {
     "thenvoi": {
-      "command": "uv",
-      "args": [
-        "--directory",
-        "/ABSOLUTE/PATH/TO/thenvoi-mcp-server",
-        "run",
-        "thenvoi-mcp"
-      ],
+      "command": "thenvoi-mcp",
       "env": {
         "THENVOI_API_KEY": "your_api_key_here",
         "THENVOI_BASE_URL": "https://app.thenvoi.com"
@@ -170,7 +142,7 @@ The Thenvoi tools will appear in the tools panel.
 }
 ```
 
-5. Update the path and API credentials
+5. Update the API credentials
 6. Save the settings file
 7. Reload VS Code window:
 
@@ -186,10 +158,10 @@ The Thenvoi tools will be available in Claude Code.
 For testing or standalone usage without an IDE:
 
 ```bash
-# Navigate to repository
-cd /path/to/thenvoi-mcp-server
+# After installing band-mcp from PyPI
+THENVOI_API_KEY=your-key thenvoi-mcp
 
-# Run the STDIO server
+# Or, from a local checkout
 uv run thenvoi-mcp
 ```
 
@@ -209,10 +181,10 @@ For cloud deployments, Docker containers, or shared team environments, use the S
 
 ```bash
 # Start SSE server on default port 8000
-uv run thenvoi-mcp --transport sse
+thenvoi-mcp --transport sse
 
 # Custom host and port
-uv run thenvoi-mcp --transport sse --host 0.0.0.0 --port 3000
+thenvoi-mcp --transport sse --host 0.0.0.0 --port 3000
 ```
 
 **Expected output:**
@@ -233,7 +205,7 @@ SSE requires maintaining a persistent connection. Use three terminals:
 **Terminal 1 - Start the server:**
 
 ```bash
-uv run thenvoi-mcp --transport sse --port 3000
+thenvoi-mcp --transport sse --port 3000
 ```
 
 **Terminal 2 - Connect to SSE stream (keep running):**
@@ -278,13 +250,13 @@ You can also configure via environment variables:
 export TRANSPORT=sse
 export HOST=0.0.0.0
 export PORT=3000
-uv run thenvoi-mcp
+thenvoi-mcp
 ```
 
 ### Testing with MCP Inspector
 
 ```bash
-npx @modelcontextprotocol/inspector uv --directory /path/to/thenvoi-mcp-server run thenvoi-mcp
+npx @modelcontextprotocol/inspector thenvoi-mcp
 ```
 
 ## 🔨 Available Tools
@@ -526,11 +498,11 @@ and the ignored overlap is logged at WARN.
 # Check Python version (must be 3.11+)
 python --version
 
-# Verify uv is installed
-uv --version
+# Verify the CLI is installed
+thenvoi-mcp --help
 
 # Try running with debug mode
-THENVOI_LOG_LEVEL=debug uv run thenvoi-mcp
+THENVOI_LOG_LEVEL=debug thenvoi-mcp
 ```
 
 ### Authentication Failures
@@ -545,11 +517,10 @@ THENVOI_LOG_LEVEL=debug uv run thenvoi-mcp
 
 ### AI Assistant Not Detecting Tools
 
-1. Verify the path in configuration is correct: `cd /path/to/thenvoi-mcp-server && pwd`
-2. Check uv is in PATH: `which uv`
-3. Test server manually: `uv run thenvoi-mcp`
-4. Restart your AI assistant completely
-5. Check logs:
+1. Confirm `thenvoi-mcp` is on PATH: `which thenvoi-mcp`
+2. Test server manually: `THENVOI_API_KEY=... thenvoi-mcp`
+3. Restart your AI assistant completely
+4. Check logs:
    ```bash
    # macOS
    tail -f ~/Library/Logs/Claude/mcp*.log
@@ -557,13 +528,11 @@ THENVOI_LOG_LEVEL=debug uv run thenvoi-mcp
 
 ### Common Error Solutions
 
-| Issue                  | Solution                                                                                         |
-| ---------------------- | ------------------------------------------------------------------------------------------------ |
-| "Repository not found" | Run `git clone https://github.com/thenvoi/thenvoi-mcp-server`                                  |
-| "API key invalid"      | Regenerate API key at[app.thenvoi.com/settings/api-keys](https://app.thenvoi.com/settings/api-keys) |
-| ".env file not found"  | Run `cp env.template .env` in repository directory                                             |
-| "uv command not found" | Install uv:`pip install uv` or visit [docs.astral.sh/uv](https://docs.astral.sh/uv/)              |
-| "Connection refused"   | Check firewall settings and network connectivity                                                 |
+| Issue                          | Solution                                                                                         |
+| ------------------------------ | ------------------------------------------------------------------------------------------------ |
+| "thenvoi-mcp command not found"| Install with `pip install band-mcp` or `uv tool install band-mcp`                              |
+| "API key invalid"              | Regenerate API key at[app.thenvoi.com/settings/api-keys](https://app.thenvoi.com/settings/api-keys) |
+| "Connection refused"           | Check firewall settings and network connectivity                                                 |
 
 ## 💻 Development
 
@@ -592,6 +561,13 @@ Tool *implementations* live in [`thenvoi-sdk`](https://github.com/thenvoi/thenvo
 ### Setup Development Environment
 
 ```bash
+# Clone the repository (with submodules for shared rules)
+git clone --recurse-submodules https://github.com/thenvoi/thenvoi-mcp
+cd thenvoi-mcp
+
+# Copy environment template
+cp .env.example .env  # then edit and set THENVOI_API_KEY
+
 # Install with dev dependencies
 uv sync --extra dev
 
@@ -706,13 +682,7 @@ Add Context7 to your existing MCP configuration alongside Thenvoi:
 {
   "mcpServers": {
     "thenvoi": {
-      "command": "uv",
-      "args": [
-        "--directory",
-        "/ABSOLUTE/PATH/TO/thenvoi-mcp-server",
-        "run",
-        "thenvoi-mcp"
-      ],
+      "command": "thenvoi-mcp",
       "env": {
         "THENVOI_API_KEY": "your_api_key_here",
         "THENVOI_BASE_URL": "https://app.thenvoi.com"

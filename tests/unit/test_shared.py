@@ -102,9 +102,8 @@ def test_get_agent_tools_returns_distinct_instance_per_room(monkeypatch):
 
 
 def test_get_agent_tools_accepts_none_for_room_less_agent_tools(monkeypatch):
-    fake_client = MagicMock()
     fake_agent_rest = MagicMock()
-    app_ctx = AppContext(client=fake_client, agent_rest=fake_agent_rest)
+    app_ctx = AppContext(agent_rest=fake_agent_rest)
     ctx = _make_ctx(app_ctx)
 
     class FakeAgentTools:
@@ -160,7 +159,7 @@ def test_get_agent_tools_raises_when_sdk_import_fails(monkeypatch):
     # degradation. `_try_import_agent_tools` now raises ConfigError on failure;
     # get_agent_tools propagates so the operator sees an actionable message.
     def _raise() -> object:
-        raise ConfigError("thenvoi-sdk >= 0.3.0 is required")
+        raise ConfigError("thenvoi-sdk >= 0.2.11 is required")
 
     monkeypatch.setattr(shared_mod, "_try_import_agent_tools", _raise)
 

@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Matching env vars: `THENVOI_USER_KEY` / `BAND_USER_KEY`, `THENVOI_AGENT_KEY` / `BAND_AGENT_KEY`, `THENVOI_MCP_ROOM_ID` / `BAND_MCP_ROOM_ID`, `THENVOI_MCP_SCOPE` / `BAND_MCP_SCOPE`, `THENVOI_MCP_TOOLS` / `BAND_MCP_TOOLS` (INT-350).
 - SDK-driven tool registrar: tool definitions now live in `thenvoi-sdk-python` and are consumed by `thenvoi-mcp` via `iter_tool_definitions()`. Single source of truth for both agent and human tool logic (INT-351).
 - Room pinning: `--room-id` binds the MCP server to a single chat/room; the room field is hidden from the advertised JSON schema and injected at call time (INT-351).
-- Runtime dependency on `thenvoi-sdk >= 0.3.0` (provides `HumanTools`, `AgentTools`, and `iter_tool_definitions`). Missing the SDK now raises `ConfigError` at startup with exit code 2 instead of silently serving zero tools (INT-352).
+- Runtime dependency on `thenvoi-sdk >= 0.2.11` (provides `HumanTools`, `AgentTools`, and `iter_tool_definitions`). Missing the SDK now raises `ConfigError` at startup with exit code 2 instead of silently serving zero tools (INT-352).
 
 ### Changed
 - **BREAKING**: Contact tools are no longer registered by default. Operators who relied on implicit contacts (either through `THENVOI_API_KEY` or the old MCP default) must pass `--tools contacts`. Memory tools remain opt-in via `--tools memory` as before.
@@ -78,6 +78,25 @@ Memory tools (opt-in via `--tools memory`):
 
 ### Compatibility
 - `THENVOI_API_KEY` is still supported as a legacy fallback; the new `--user-key` / `--agent-key` flags take precedence when set. When `THENVOI_API_KEY` is the only credential, `config.scope` is rewritten from the key's capabilities so the advertised tool surface matches what the key can actually call.
+
+## [1.3.1](https://github.com/thenvoi/thenvoi-mcp/compare/thenvoi-mcp-v1.3.0...thenvoi-mcp-v1.3.1) (2026-05-20)
+
+
+### Miscellaneous Chores
+
+* trigger 1.3.1 release ([5d3b82c](https://github.com/thenvoi/thenvoi-mcp/commit/5d3b82cdf87ec0b50f2872ffe673ead22247cb20))
+
+## [1.3.0](https://github.com/thenvoi/thenvoi-mcp/compare/thenvoi-mcp-v1.2.0...thenvoi-mcp-v1.3.0) (2026-05-20)
+
+
+### Features
+
+* Publish thenvoi-mcp to PyPI as band-mcp (INT-435) ([d48fa39](https://github.com/thenvoi/thenvoi-mcp/commit/d48fa392b77431f14258173dac346dde4077c0ce))
+
+
+### Bug Fixes
+
+* **ci:** retarget PR triggers from develop to dev/main ([#102](https://github.com/thenvoi/thenvoi-mcp/issues/102)) ([450a0f2](https://github.com/thenvoi/thenvoi-mcp/commit/450a0f2f8e1eaa3c7312506d782fa586afabc3bd))
 
 ## [1.2.0](https://github.com/thenvoi/thenvoi-mcp/compare/thenvoi-mcp-v1.1.1...thenvoi-mcp-v1.2.0) (2026-04-05)
 
