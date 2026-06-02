@@ -15,7 +15,6 @@ missing SDK imports raise `ConfigError` because the SDK is a hard dependency.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import sys
 from collections import OrderedDict
@@ -320,21 +319,6 @@ def get_agent_tools_lock(ctx: AppContextType, room_id: str | None) -> asyncio.Lo
     """Return the lock stripe protecting a cached `AgentTools` instance."""
     app_ctx = get_app_context(ctx)
     return app_ctx._agent_tools_locks[hash(room_id) % len(app_ctx._agent_tools_locks)]
-
-
-def serialize_response(result: Any, **kwargs: Any) -> str:
-    """Serialize a Pydantic model response to JSON.
-
-    Args:
-        result: A Pydantic model or any object with model_dump() method.
-        **kwargs: Additional arguments passed to model_dump().
-
-    Returns:
-        JSON string representation of the result.
-    """
-    if hasattr(result, "model_dump") and callable(result.model_dump):
-        return json.dumps(result.model_dump(**kwargs), indent=2, default=str)
-    return json.dumps(result, indent=2, default=str)
 
 
 transport_security = TransportSecuritySettings(

@@ -21,11 +21,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from mcp.server.fastmcp import FastMCP
 
+from thenvoi.runtime import tools as runtime_tools  # type: ignore[import-not-found]
 from thenvoi.runtime.tools import (  # type: ignore[import-not-found]
     TOOL_DEFINITIONS,
+    ToolDefinition,
     iter_tool_definitions,
 )
-from thenvoi_mcp.config import Config
+from thenvoi_mcp.config import Config, ConfigError
 from thenvoi_mcp.tools import registrar
 from thenvoi_mcp.tools.registrar import (
     AGENT_ROOM_BOUND_TOOL_NAMES,
@@ -117,6 +119,42 @@ def test_scope_both_registers_union() -> None:
             )
         }
     assert _registered_names(mcp) == expected
+
+
+def test_scope_both_rejects_duplicate_names_across_surfaces(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent_definition = TOOL_DEFINITIONS["thenvoi_create_chatroom"]
+    human_definition = ToolDefinition(
+        name=agent_definition.name,
+        input_model=agent_definition.input_model,
+        method_name=agent_definition.method_name,
+        surface="human",
+    )
+
+    def fake_iter_tool_definitions(
+        surface: str,
+        include_contacts: bool,
+        include_memory: bool,
+    ) -> list[ToolDefinition]:
+        if surface == "agent":
+            return [agent_definition]
+        return [human_definition]
+
+    monkeypatch.setattr(
+        runtime_tools,
+        "iter_tool_definitions",
+        fake_iter_tool_definitions,
+    )
+
+    mcp = FastMCP(name="t")
+    cfg = Config(scope=["agent", "human"], tools=[], agent_key="a", user_key="u")
+
+    with pytest.raises(
+        ConfigError,
+        match="Duplicate tool name across enabled surfaces: thenvoi_create_chatroom",
+    ):
+        register_tools(mcp, cfg)
 
 
 # ---------------------------------------------------------------------------

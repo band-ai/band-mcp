@@ -490,6 +490,7 @@ def register_tools(mcp: FastMCP, config: Config) -> None:
     pinned_room_id = config.room_id
 
     total = 0
+    seen_names: dict[str, str] = {}
     for surface in config.scope:
         definitions = iter_tool_definitions(
             surface=surface,
@@ -497,6 +498,14 @@ def register_tools(mcp: FastMCP, config: Config) -> None:
             include_memory=include_memory,
         )
         for definition in definitions:
+            previous_surface = seen_names.get(definition.name)
+            if previous_surface is not None:
+                raise ConfigError(
+                    "Duplicate tool name across enabled surfaces: "
+                    f"{definition.name} ({previous_surface}, {definition.surface})"
+                )
+            seen_names[definition.name] = definition.surface
+
             is_agent_room_bound, is_human_room_bound = _classify_tool(definition)
 
             # Build the per-tool input model (original, extended, or pinned).
