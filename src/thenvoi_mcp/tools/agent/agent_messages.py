@@ -1,6 +1,7 @@
 import json
 import logging
-from typing import Any, Dict, List, Literal, Optional
+import re
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from thenvoi_rest import (
     ChatMessageRequest,
@@ -11,6 +12,44 @@ from thenvoi_rest.core.api_error import ApiError
 from thenvoi_mcp.shared import AppContextType, get_app_context, mcp, serialize_response
 
 logger = logging.getLogger(__name__)
+
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
+)
+
+
+def _looks_like_uuid(value: Any) -> bool:
+    """True if value is a string matching the canonical UUID form."""
+    return isinstance(value, str) and bool(_UUID_RE.match(value))
+
+
+def _build_participant_index(client: Any, chat_id: str) -> Dict[str, Any]:
+    """Map a chat room's participants by every name-like key (lowercased, @-stripped).
+
+    Indexes name, username, display_name and handle so a caller can resolve a
+    participant by any of them — used to turn human-friendly names or handles
+    into the platform participant IDs that mentions require.
+    """
+    participants_response = client.agent_api_participants.list_agent_chat_participants(
+        chat_id=chat_id
+    )
+    index: Dict[str, Any] = {}
+    for p in participants_response.data or []:
+        for attr in ("name", "username", "display_name", "handle"):
+            val = getattr(p, attr, None)
+            if isinstance(val, str) and val:
+                index[val.lower().lstrip("@")] = p
+    return index
+
+
+def _participant_display_name(participant: Any) -> str:
+    """Best display name for a participant, without the @ prefix."""
+    return (
+        getattr(participant, "name", None)
+        or getattr(participant, "username", None)
+        or getattr(participant, "display_name", None)
+        or "Unknown"
+    )
 
 
 @mcp.tool()
@@ -156,7 +195,7 @@ def create_agent_chat_message(
     chat_id: str,
     content: str,
     recipients: Optional[str] = None,
-    mentions: Optional[str] = None,
+    mentions: Optional[Union[str, list]] = None,
 ) -> str:
     """Send a text message in a chat room.
 
@@ -169,11 +208,15 @@ def create_agent_chat_message(
         Provide comma-separated names. The tool resolves names to IDs automatically.
         Example: recipients="weather agent,sarah"
 
-    Option 2 - Use `mentions` (for libraries with caching):
-        Provide a JSON array with pre-resolved IDs.
-        Example: mentions='[{"id": "uuid-123", "name": "weather agent"}]'
+    Option 2 - Use `mentions`:
+        Provide a list of mentions — either as a native list or a JSON-encoded
+        string. Each item may be a handle/name string, or an object with any of
+        id / handle / name. Handles and names are resolved to participant IDs
+        automatically; items that already carry a UUID `id` skip resolution.
+        Example: mentions=[{"id": "uuid-123", "name": "weather agent"}]
+        Example: mentions=["weather agent", "@sarah"]
 
-    If both are provided, `mentions` takes precedence (no API call needed).
+    If both are provided, `mentions` takes precedence.
 
     For event-type messages (tool_call, tool_result, thought, error, etc.),
     use create_agent_chat_event instead.
@@ -184,9 +227,11 @@ def create_agent_chat_message(
         recipients: Comma-separated participant names to tag (LLM-friendly).
                    Example: "weather agent,sarah,mike"
                    Names are resolved to IDs via list_agent_chat_participants.
-        mentions: JSON array of mentions with pre-resolved IDs (for libraries).
-                 Format: [{"id": "uuid", "name": "display_name"}, ...]
-                 When provided, skips name resolution (more efficient).
+        mentions: List of mentions, as a native list or a JSON-encoded string.
+                 Items may be handle/name strings or objects with id/handle/name.
+                 Format: [{"id": "uuid", "name": "display_name"}, ...] or
+                 ["handle-or-name", ...]. Handles/names are resolved to IDs;
+                 UUID ids are used as-is.
 
     Returns:
         JSON string containing the created message details.
@@ -195,11 +240,14 @@ def create_agent_chat_message(
         # LLM usage (names):
         create_agent_chat_message(chat_id="123", content="Hello!", recipients="weather agent")
 
+        # LLM usage (mentions as a list of handles):
+        create_agent_chat_message(chat_id="123", content="Hello!", mentions=["weather agent"])
+
         # Library usage (pre-resolved IDs):
         create_agent_chat_message(
             chat_id="123",
             content="Hello!",
-            mentions='[{"id": "uuid-456", "name": "weather agent"}]'
+            mentions=[{"id": "uuid-456", "name": "weather agent"}]
         )
     """
     logger.debug("Creating message in chat: %s", chat_id)
@@ -207,18 +255,72 @@ def create_agent_chat_message(
 
     mentions_list: List[ChatMessageRequestMentionsItem] = []
 
-    # Option 1: Pre-resolved mentions provided (efficient path for libraries)
+    # Option 1: mentions provided (native list OR JSON-encoded string).
     if mentions:
-        try:
-            parsed_mentions = json.loads(mentions)
-            mentions_list = [
-                ChatMessageRequestMentionsItem(id=m["id"], name=m["name"])
-                for m in parsed_mentions
-            ]
-        except json.JSONDecodeError as e:
-            return f"Error: Invalid JSON for mentions: {str(e)}"
-        except KeyError as e:
-            return f"Error: Missing required field in mentions: {str(e)}"
+        if isinstance(mentions, str):
+            try:
+                parsed_mentions = json.loads(mentions)
+            except json.JSONDecodeError as e:
+                return (
+                    f"Error: Invalid JSON for mentions: {str(e)}. Pass a native "
+                    f'list like [{{"id": "uuid", "name": "display_name"}}] or '
+                    f"[\"handle\"], or use recipients='name1,name2'."
+                )
+        else:
+            parsed_mentions = mentions
+
+        if not isinstance(parsed_mentions, list):
+            return (
+                f"Error: mentions must be a list of mention objects or handles, "
+                f"got {type(parsed_mentions).__name__}."
+            )
+
+        # Split into pre-resolved (UUID-id objects) and items needing lookup
+        # (handle/name strings, or objects whose id is a handle, not a UUID).
+        needs_resolution: List[Any] = []
+        for m in parsed_mentions:
+            if isinstance(m, dict) and _looks_like_uuid(m.get("id")):
+                mentions_list.append(
+                    ChatMessageRequestMentionsItem(
+                        id=m["id"], name=m.get("name") or "Unknown"
+                    )
+                )
+            else:
+                needs_resolution.append(m)
+
+        if needs_resolution:
+            index = _build_participant_index(client, chat_id)
+            not_found: List[str] = []
+            for m in needs_resolution:
+                if isinstance(m, str):
+                    key = m
+                elif isinstance(m, dict):
+                    key = m.get("handle") or m.get("name") or m.get("id") or ""
+                else:
+                    not_found.append(str(m))
+                    continue
+                participant = index.get(str(key).lower().lstrip("@"))
+                if participant:
+                    mentions_list.append(
+                        ChatMessageRequestMentionsItem(
+                            id=participant.id,
+                            name=_participant_display_name(participant),
+                        )
+                    )
+                else:
+                    not_found.append(str(key))
+
+            if not_found:
+                return (
+                    f"Error: Could not resolve mentions: {', '.join(not_found)}. "
+                    f"Available participants: {', '.join(index.keys())}"
+                )
+
+        if not mentions_list:
+            return (
+                "Error: mentions resolved to an empty list. Provide at least one "
+                "valid mention (handle, name, or {id, name})."
+            )
 
     # Option 2: Resolve names to IDs (LLM-friendly path)
     elif recipients:
@@ -230,35 +332,18 @@ def create_agent_chat_message(
             return "Error: recipients cannot be empty"
 
         # Fetch participants to map names to IDs
-        participants_response = (
-            client.agent_api_participants.list_agent_chat_participants(chat_id=chat_id)
-        )
-        participants = participants_response.data
-
-        # Build name -> participant mapping (case-insensitive)
-        name_to_participant: Dict[str, Any] = {}
-        for p in participants:
-            # Agent participants have 'name' field
-            if hasattr(p, "name") and p.name:
-                name_to_participant[p.name.lower()] = p
-            # User participants may have 'username' or 'display_name'
-            if hasattr(p, "username") and p.username:
-                name_to_participant[p.username.lower()] = p
-            if hasattr(p, "display_name") and p.display_name:
-                name_to_participant[p.display_name.lower()] = p
+        name_to_participant = _build_participant_index(client, chat_id)
 
         # Resolve names to mentions
-        not_found: List[str] = []
+        not_found = []
         for name in recipient_names:
-            participant = name_to_participant.get(name)
+            participant = name_to_participant.get(name.lstrip("@"))
             if participant:
-                display_name = (
-                    getattr(participant, "name", None)
-                    or getattr(participant, "username", None)
-                    or getattr(participant, "display_name", "Unknown")
-                )
                 mentions_list.append(
-                    ChatMessageRequestMentionsItem(id=participant.id, name=display_name)
+                    ChatMessageRequestMentionsItem(
+                        id=participant.id,
+                        name=_participant_display_name(participant),
+                    )
                 )
             else:
                 not_found.append(name)
@@ -274,7 +359,7 @@ def create_agent_chat_message(
     else:
         return (
             f"Error: Missing recipients or mentions. To send a message, specify who to tag. "
-            f'Use recipients=\'name1,name2\' (names) or mentions=\'[{{"id":"uuid","name":"display_name"}}]\' (IDs). '
+            f'Use recipients=\'name1,name2\' (names) or mentions=[{{"id":"uuid","name":"display_name"}}] (IDs). '
             f"Call list_agent_chat_participants(chat_id='{chat_id}') to see available participants."
         )
 
