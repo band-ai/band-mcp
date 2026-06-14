@@ -1,6 +1,6 @@
 """MCP server entry point.
 
-INT-338 adds dual-credential configuration: `--user-key`, `--agent-key`,
+Dual-credential configuration: `--user-key`, `--agent-key`,
 `--room-id`, `--scope`, `--tools` CLI flags (plus matching env vars). Tool
 registration runs through the SDK-driven registrar (`tools/registrar.py`).
 
@@ -252,14 +252,14 @@ def run() -> None:
 
     set_pending_config(config)
 
-    # SDK-driven registrar (INT-351): registers every
+    # SDK-driven registrar: registers every
     # ``iter_tool_definitions(surface=s, ...)`` entry for each scope in
     # ``config.scope``. Single source of truth for tool definitions, shared
-    # with ``band-sdk-python``.
+    # with the SDK.
     try:
         register_tools(mcp, config)
     except ConfigError as exc:
-        # Missing SDK is fatal (INT-352). Fall out cleanly with exit code 2 so
+        # Missing SDK is fatal. Fall out cleanly with exit code 2 so
         # operators see the actionable message instead of a traceback.
         logger.error("Configuration error: %s", exc)
         raise SystemExit(2) from exc

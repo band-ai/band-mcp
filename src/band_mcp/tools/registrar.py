@@ -1,4 +1,4 @@
-"""SDK-driven MCP tool registrar (Phase 3 of INT-338, INT-351).
+"""SDK-driven MCP tool registrar.
 
 Replaces the handwritten per-tool ``@mcp.tool()`` registrations with a
 scope-filtered loop over ``band.runtime.tools.iter_tool_definitions(...)``.
@@ -8,8 +8,8 @@ Each handler is a closure that:
 2. Reuses the room-scoped ``AgentTools`` cache on ``AppContext``.
 3. Dispatches to the Phase-1 ``HumanTools`` / ``AgentTools`` SDK method.
 
-Design deviation from the Phase 3 spec (resolved with the ticket author)
------------------------------------------------------------------------
+Design deviation from the original spec (resolved with the ticket author)
+-------------------------------------------------------------------------
 The spec originally told the registrar to classify agent tools by checking
 for a ``room_id`` field on ``ToolDefinition.input_model.model_fields``. That
 classifier does not work for agent tools, because ``AgentTools`` is *room-
@@ -25,12 +25,12 @@ the advertised agent tool schema. Today's handwritten MCP handlers use
 zero breaking change for existing MCP consumers after the handwritten handlers
 are removed. ``AliasChoices("chat_id",
 "room_id")`` makes the forward-compat ``room_id`` name work too, matching
-the Phase 3 spec's intent. See ``AGENT_ROOM_BOUND_TOOL_NAMES`` below.
+the original spec's intent. See ``AGENT_ROOM_BOUND_TOOL_NAMES`` below.
 
 Human-surface classification is unchanged: human input models already carry
-a ``chat_id`` field where applicable (Phase 1 derived them from
-``HumanTools`` method signatures), so the Phase 3 spec's
-``model_fields``-based classifier works for the human surface.
+a ``chat_id`` field where applicable (derived from ``HumanTools`` method
+signatures), so the ``model_fields``-based classifier works for the human
+surface.
 """
 
 from __future__ import annotations
@@ -62,7 +62,7 @@ from band_mcp.shared import (
 # (i.e. the handler is room-scoped). Because ``AgentTools`` is constructor-
 # scoped, the SDK input models do not carry a room field — so the registrar
 # has to re-add it at the transport layer. Names match the tool names in
-# ``band-sdk-python``'s ``iter_tool_definitions(surface="agent")``.
+# the SDK's ``iter_tool_definitions(surface="agent")``.
 AGENT_ROOM_BOUND_TOOL_NAMES: frozenset[str] = frozenset(
     {
         "band_send_message",
@@ -414,7 +414,7 @@ def make_handler(
     sig = _build_handler_signature(ctx_param_name, input_model)
     _dispatch.__signature__ = sig  # type: ignore[attr-defined]
     _dispatch.__name__ = tool_name
-    # Description comes from the SDK input model's docstring (Phase 1 sets
+    # Description comes from the SDK input model's docstring (the SDK sets
     # these to the LLM-facing tool description).
     _dispatch.__doc__ = (input_model.__doc__ or "").strip() or f"Execute {tool_name}"
 
@@ -447,7 +447,7 @@ def _classify_tool(
     docstring).
 
     Human tools are classified by inspecting ``input_model.model_fields``
-    for ``chat_id`` — the Phase 1 human models carry it where applicable.
+    for ``chat_id`` — the human models carry it where applicable.
     """
     if definition.surface == "agent":
         return (definition.name in AGENT_ROOM_BOUND_TOOL_NAMES, False)

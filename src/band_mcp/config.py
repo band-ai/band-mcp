@@ -1,6 +1,6 @@
 """Configuration for band-mcp.
 
-Phase 2 of INT-338 (INT-350) replaces the single-key `BAND_API_KEY` + prefix
+This module replaces the single-key `BAND_API_KEY` + prefix
 inference config with explicit dual credentials, `--scope` / `--tools` /
 `--room-id` flags, and typo suggestions. The legacy `BAND_API_KEY` path is
 retained as a fallback — existing deployments keep working.
@@ -94,7 +94,7 @@ class Config:
 
 
 class Settings(BaseSettings):
-    """Process-wide settings that are not part of Phase 2's credential plumbing.
+    """Process-wide settings that are not part of the credential plumbing.
 
     Kept as `pydantic-settings` for backward compatibility with existing code
     paths that import `settings` directly.
@@ -159,7 +159,7 @@ def _suggest_value(bad: str, valid: list[str]) -> str | None:
     """Return the closest match in `valid` or None.
 
     Thin wrapper over `difflib.get_close_matches(bad, valid, n=1, cutoff=0.6)`.
-    Private to `config.py` on purpose — Phase 3's registrar doesn't need it.
+    Private to `config.py` on purpose — the registrar doesn't need it.
     """
     matches = difflib.get_close_matches(bad, valid, n=1, cutoff=0.6)
     return matches[0] if matches else None

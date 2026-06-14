@@ -7,8 +7,8 @@ corresponding scope is not served by the current config.
 
 HumanTools / AgentTools coordination with the SDK
 -------------------------------------------------
-The SDK's `HumanTools` and `AgentTools` classes live in `band-sdk-python`.
-`get_human_tools()` / `get_agent_tools()` use startup-validated SDK classes;
+The SDK's `HumanTools` and `AgentTools` classes are provided by the `band-sdk`
+package. `get_human_tools()` / `get_agent_tools()` use startup-validated SDK classes;
 missing SDK imports raise `ConfigError` because the SDK is a hard dependency.
 """
 
@@ -94,9 +94,8 @@ def _require_sdk_tools() -> tuple[Any, Any]:
 
     Raises ``ConfigError`` if the SDK package is not importable, so the
     operator gets a clear startup error instead of a silent empty tool
-    surface. Phase 4 (INT-352) pinned ``band-sdk`` as a hard dependency;
-    a missing import now means the install is broken, not a development-
-    timeline race with INT-349.
+    surface. ``band-sdk`` is a hard dependency, so a missing import means
+    the install is broken.
     """
     try:
         from band.runtime.tools import AgentTools, HumanTools
@@ -240,7 +239,7 @@ def get_app_context(ctx: AppContextType) -> AppContext:
 def get_human_tools(ctx: AppContextType) -> Any:
     """Return the startup-constructed `HumanTools` singleton, or None.
 
-    Phase 3 (INT-351) calls this per tool invocation. The singleton is built
+    This is called per tool invocation. The singleton is built
     once in `build_app_context` from the human `AsyncRestClient`; there is no
     per-request reconstruction.
 
