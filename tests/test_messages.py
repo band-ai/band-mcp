@@ -6,9 +6,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from thenvoi_rest.core.api_error import ApiError
+from band_rest.core.api_error import ApiError
 from thenvoi_testing.factories import factory
-from thenvoi_mcp.tools.agent.agent_messages import (
+from band_mcp.tools.agent.agent_messages import (
     create_agent_chat_message,
     get_agent_chat_context,
     get_agent_next_message,

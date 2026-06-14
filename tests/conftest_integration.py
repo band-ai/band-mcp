@@ -14,29 +14,33 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from thenvoi_rest import RestClient
+from band_rest import RestClient
 
-from thenvoi_mcp.shared import AppContext
+from band_mcp.shared import AppContext
 from thenvoi_testing.markers import skip_without_env
-from thenvoi_testing.settings import ThenvoiTestSettings
+from thenvoi_testing.settings import BaseTestSettings
 
 
-class TestSettings(ThenvoiTestSettings):
+class BandTestSettings(BaseTestSettings):
     """Settings for integration tests, loaded from .env.test."""
+
+    band_api_key: str = ""
+    band_base_url: str = "https://app.band.ai"
+    test_agent_id: str = ""
 
     _env_file_path: Path = Path(__file__).parent.parent / ".env.test"
 
 
 # Load settings from .env.test
-test_settings = TestSettings()
+test_settings = BandTestSettings()
 
 
 def get_api_key() -> str | None:
-    return test_settings.thenvoi_api_key or None
+    return test_settings.band_api_key or None
 
 
 def get_base_url() -> str:
-    return test_settings.thenvoi_base_url
+    return test_settings.band_base_url
 
 
 def get_test_agent_id() -> str | None:
@@ -44,7 +48,7 @@ def get_test_agent_id() -> str | None:
 
 
 # Skip marker for integration tests
-requires_api = skip_without_env("THENVOI_API_KEY")
+requires_api = skip_without_env("BAND_API_KEY")
 
 
 @dataclass
@@ -67,7 +71,7 @@ class IntegrationContext:
 def api_client() -> RestClient | None:
     """Create a real API client for integration tests.
 
-    Returns None if THENVOI_API_KEY is not set.
+    Returns None if BAND_API_KEY is not set.
     """
     api_key = get_api_key()
     if not api_key:
@@ -86,7 +90,7 @@ def integration_ctx(api_client: RestClient | None) -> IntegrationContext:
     Skips test if API client is not available.
     """
     if api_client is None:
-        pytest.skip("THENVOI_API_KEY not set")
+        pytest.skip("BAND_API_KEY not set")
 
     return IntegrationContext(client=api_client)
 
@@ -99,9 +103,9 @@ def test_chat(api_client: RestClient | None):
     Note: Cleanup may not be possible if delete is not supported.
     """
     if api_client is None:
-        pytest.skip("THENVOI_API_KEY not set")
+        pytest.skip("BAND_API_KEY not set")
 
-    from thenvoi_rest import ChatRoomRequest
+    from band_rest import ChatRoomRequest
 
     # Create a test chat
     response = api_client.agent_api.create_agent_chat(
@@ -119,7 +123,7 @@ def test_peer_id(api_client: RestClient | None) -> str | None:
     Returns the first available peer (agent or user) that can be added to chats.
     """
     if api_client is None:
-        pytest.skip("THENVOI_API_KEY not set")
+        pytest.skip("BAND_API_KEY not set")
 
     response = api_client.agent_api.list_agent_peers()
     if response.data:

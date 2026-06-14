@@ -4,7 +4,7 @@ import json
 
 
 from thenvoi_testing.factories import factory
-from thenvoi_mcp.tools.agent.agent_identity import get_agent_me, list_agent_peers
+from band_mcp.tools.agent.agent_identity import get_agent_me, list_agent_peers
 
 
 class TestGetAgentMe:

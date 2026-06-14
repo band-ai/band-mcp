@@ -3,7 +3,7 @@
 import json
 from unittest.mock import MagicMock
 
-from thenvoi_mcp.tools.human.human_chats import (
+from band_mcp.tools.human.human_chats import (
     create_my_chat,
     get_my_chat,
     list_my_chats,

@@ -1,4 +1,4 @@
-"""Unit tests for `thenvoi_mcp.shared`.
+"""Unit tests for `band_mcp.shared`.
 
 Covers acceptance criterion #11 from INT-350: `get_human_tools` returns a
 singleton, `get_agent_tools` caches per-room, `reset_agent_tools_cache` clears
@@ -15,9 +15,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from thenvoi_mcp import shared as shared_mod
-from thenvoi_mcp.config import Config
-from thenvoi_mcp.shared import (
+from band_mcp import shared as shared_mod
+from band_mcp.config import Config
+from band_mcp.shared import (
     AppContext,
     get_agent_tools,
     get_human_tools,
@@ -61,7 +61,7 @@ def test_get_human_tools_returns_none_and_warns_when_unavailable(caplog):
     app_ctx = AppContext(client=fake_client, human_tools=None)
     ctx = _make_ctx(app_ctx)
 
-    with caplog.at_level(logging.WARNING, logger="thenvoi_mcp.shared"):
+    with caplog.at_level(logging.WARNING, logger="band_mcp.shared"):
         result = get_human_tools(ctx)
     assert result is None
     assert any("HumanTools not available" in r.message for r in caplog.records)
@@ -158,7 +158,7 @@ def test_get_agent_tools_returns_none_without_agent_credential(caplog):
     app_ctx = AppContext(client=fake_client, agent_rest=None)
     ctx = _make_ctx(app_ctx)
 
-    with caplog.at_level(logging.WARNING, logger="thenvoi_mcp.shared"):
+    with caplog.at_level(logging.WARNING, logger="band_mcp.shared"):
         result = get_agent_tools(ctx, "room_A")
     assert result is None
     assert any("no agent credential configured" in r.message for r in caplog.records)

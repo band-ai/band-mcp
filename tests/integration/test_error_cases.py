@@ -14,17 +14,17 @@ import logging
 import uuid
 
 import pytest
-from thenvoi_rest import RestClient
-from thenvoi_rest.errors import (
+from band_rest import RestClient
+from band_rest.errors import (
     NotFoundError,
     UnauthorizedError,
     UnprocessableEntityError,
 )
 
 from tests.integration.conftest import get_base_url, requires_api
-from thenvoi_mcp.tools.agent.agent_chats import get_agent_chat
-from thenvoi_mcp.tools.agent.agent_identity import list_agent_peers
-from thenvoi_mcp.tools.agent.agent_participants import (
+from band_mcp.tools.agent.agent_chats import get_agent_chat
+from band_mcp.tools.agent.agent_identity import list_agent_peers
+from band_mcp.tools.agent.agent_participants import (
     add_agent_chat_participant,
     list_agent_chat_participants,
     remove_agent_chat_participant,

@@ -1,6 +1,6 @@
-# Contributing to Thenvoi MCP
+# Contributing to Band MCP
 
-Thank you for your interest in contributing to Thenvoi MCP! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to Band MCP! This document provides guidelines and instructions for contributing.
 
 ## Development Setup
 
@@ -53,7 +53,7 @@ Thank you for your interest in contributing to Thenvoi MCP! This document provid
    # Unit tests
    uv run pytest tests/ --ignore=tests/integration/ -v
 
-   # Integration tests (requires THENVOI_API_KEY)
+   # Integration tests (requires BAND_API_KEY)
    uv run pytest tests/integration/ -v -s --no-cov
    ```
 
@@ -103,7 +103,7 @@ All formatting is enforced via pre-commit hooks.
 
 Never use `print()` statements. Always use the shared logger:
 ```python
-from thenvoi_mcp.shared import logger
+from band_mcp.shared import logger
 
 logger.info("Processing request")
 logger.error("Failed to connect", exc_info=True)
@@ -113,7 +113,7 @@ logger.error("Failed to connect", exc_info=True)
 
 All MCP tools must follow this pattern:
 ```python
-from thenvoi_mcp.shared import mcp, get_app_context, AppContextType
+from band_mcp.shared import mcp, get_app_context, AppContextType
 
 @mcp.tool()
 def my_tool(ctx: AppContextType, param: str) -> str:
@@ -135,11 +135,11 @@ Key requirements:
 
 ### Imports
 
-Use absolute imports from `thenvoi_mcp`:
+Use absolute imports from `band_mcp`:
 ```python
 # Good
-from thenvoi_mcp.shared import mcp, logger
-from thenvoi_mcp.config import Settings
+from band_mcp.shared import mcp, logger
+from band_mcp.config import Settings
 
 # Avoid
 from .shared import mcp
@@ -163,7 +163,7 @@ uv run pytest tests/integration/ -v -s --no-cov
 
 ### Writing Tests
 
-This project uses the shared `thenvoi-testing-python` package for test fixtures and utilities.
+This project uses the shared `band-testing-python` package for test fixtures and utilities.
 
 **Unit Tests:**
 - Place in `tests/`
@@ -194,7 +194,7 @@ def test_my_tool(mock_ctx, mock_agent_api):
 
 **Integration Tests:**
 - Place in `tests/integration/`
-- Require `THENVOI_API_KEY` environment variable (set in `.env.test`)
+- Require `BAND_API_KEY` environment variable (set in `.env.test`)
 - Use `@requires_api` decorator to skip if API key is not set
 
 ## Pull Request Guidelines

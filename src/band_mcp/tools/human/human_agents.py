@@ -1,8 +1,8 @@
 from typing import Optional
 
-from thenvoi_rest import AgentRegisterRequest
+from band_rest import AgentRegisterRequest
 
-from thenvoi_mcp.shared import AppContextType, get_app_context, mcp, serialize_response
+from band_mcp.shared import AppContextType, get_app_context, mcp, serialize_response
 
 
 @mcp.tool()

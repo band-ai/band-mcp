@@ -11,8 +11,8 @@ import json
 import logging
 
 from tests.integration.conftest import get_test_agent_id, requires_api
-from thenvoi_mcp.tools.agent.agent_chats import list_agent_chats
-from thenvoi_mcp.tools.agent.agent_identity import get_agent_me, list_agent_peers
+from band_mcp.tools.agent.agent_chats import list_agent_chats
+from band_mcp.tools.agent.agent_identity import get_agent_me, list_agent_peers
 
 logger = logging.getLogger(__name__)
 

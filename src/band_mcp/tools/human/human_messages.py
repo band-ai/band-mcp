@@ -1,9 +1,9 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from thenvoi_rest import ChatMessageRequest, ChatMessageRequestMentionsItem
+from band_rest import ChatMessageRequest, ChatMessageRequestMentionsItem
 
-from thenvoi_mcp.shared import AppContextType, get_app_context, mcp, serialize_response
+from band_mcp.shared import AppContextType, get_app_context, mcp, serialize_response
 
 
 @mcp.tool()

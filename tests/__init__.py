@@ -1,1 +1,1 @@
-"""Unit tests for thenvoi-mcp tools."""
+"""Unit tests for band-mcp tools."""

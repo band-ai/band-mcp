@@ -9,23 +9,23 @@ import logging
 from typing import Any
 
 from tests.integration.conftest import get_test_agent_id, requires_api
-from thenvoi_mcp.tools.agent.agent_chats import (
+from band_mcp.tools.agent.agent_chats import (
     create_agent_chat,
     get_agent_chat,
     list_agent_chats,
 )
-from thenvoi_mcp.tools.agent.agent_events import create_agent_chat_event
-from thenvoi_mcp.tools.agent.agent_identity import get_agent_me, list_agent_peers
-from thenvoi_mcp.tools.agent.agent_lifecycle import (
+from band_mcp.tools.agent.agent_events import create_agent_chat_event
+from band_mcp.tools.agent.agent_identity import get_agent_me, list_agent_peers
+from band_mcp.tools.agent.agent_lifecycle import (
     mark_agent_message_failed,
     mark_agent_message_processed,
     mark_agent_message_processing,
 )
-from thenvoi_mcp.tools.agent.agent_messages import (
+from band_mcp.tools.agent.agent_messages import (
     create_agent_chat_message,
     get_agent_chat_context,
 )
-from thenvoi_mcp.tools.agent.agent_participants import (
+from band_mcp.tools.agent.agent_participants import (
     add_agent_chat_participant,
     list_agent_chat_participants,
 )

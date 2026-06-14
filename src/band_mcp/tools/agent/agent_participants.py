@@ -1,9 +1,9 @@
 import logging
 from typing import Literal, Optional
 
-from thenvoi_rest import ParticipantRequest, ParticipantRole
+from band_rest import ParticipantRequest, ParticipantRole
 
-from thenvoi_mcp.shared import AppContextType, get_app_context, mcp, serialize_response
+from band_mcp.shared import AppContextType, get_app_context, mcp, serialize_response
 
 logger = logging.getLogger(__name__)
 

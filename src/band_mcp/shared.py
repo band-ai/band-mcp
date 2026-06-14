@@ -1,4 +1,4 @@
-"""Shared app context, logger, and FastMCP singleton for thenvoi-mcp.
+"""Shared app context, logger, and FastMCP singleton for band-mcp.
 
 Phase 2 (INT-350) extends `AppContext` with dual REST clients:
 `human_rest` (bound to `user_key` or a human-capable legacy key) and
@@ -11,7 +11,7 @@ HumanTools / AgentTools coordination with INT-349
 -------------------------------------------------
 The SDK's `HumanTools` class lands in Phase 1 (INT-349) in `thenvoi-sdk-python`
 and is not yet available in this environment (the repo depends on
-`thenvoi-client-rest`, which is the Fern-generated REST client only).
+`band-client-rest`, which is the Fern-generated REST client only).
 `get_human_tools()` / `get_agent_tools()` import `HumanTools` / `AgentTools`
 lazily and guard the import: if either import fails, the helper logs a WARN
 and returns `None`. Phase 3 (INT-351) is responsible for the registrar that
@@ -34,9 +34,9 @@ from typing import Any
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
 from mcp.server.transport_security import TransportSecuritySettings
-from thenvoi_rest import AsyncRestClient, RestClient
+from band_rest import AsyncRestClient, RestClient
 
-from thenvoi_mcp.config import (
+from band_mcp.config import (
     Config,
     ConfigError,
     _legacy_key_capabilities,
@@ -91,7 +91,7 @@ class AppContext:
 
 AppContextType = Context[ServerSession, AppContext, None]
 _agent_tools_cache_var: ContextVar[dict[str | None, Any] | None] = ContextVar(
-    "thenvoi_mcp_agent_tools_cache",
+    "band_mcp_agent_tools_cache",
     default=None,
 )
 
@@ -137,10 +137,10 @@ def _choose_legacy_client_credential(
 ) -> str | None:
     """Choose the transitional sync-client key for handwritten handlers.
 
-    Scope-specific credentials must beat a stale ``THENVOI_API_KEY`` here just
+    Scope-specific credentials must beat a stale ``BAND_API_KEY`` here just
     as they do in ``resolve_credential_for_scope``. Otherwise startup can log a
     human-only scope and register human handlers while the legacy ``RestClient``
-    is still bound to an agent key from ``THENVOI_API_KEY``.
+    is still bound to an agent key from ``BAND_API_KEY``.
     """
     scopes = set(config.scope)
     if scopes == {"human"}:
@@ -165,8 +165,8 @@ def build_app_context(
     human-only or agent-only deployments from opening connections they'll
     never use.
 
-    If `config` is None, we fall back to the legacy `THENVOI_API_KEY` path:
-    the sync `client` is populated from `settings.thenvoi_api_key` and the
+    If `config` is None, we fall back to the legacy `BAND_API_KEY` path:
+    the sync `client` is populated from `settings.band_api_key` and the
     new async slots stay None. This preserves current behavior for any caller
     that has not yet moved to `resolve_config(...)`.
 
@@ -174,12 +174,12 @@ def build_app_context(
     Phase 4 (INT-352) removes the legacy `client` slot once handwritten tool
     handlers are deleted.
     """
-    base_url = settings.thenvoi_base_url
+    base_url = settings.band_base_url
 
     if config is None:
         # Legacy path: single sync client, no new slots.
         client = RestClient(
-            api_key=settings.thenvoi_api_key,
+            api_key=settings.band_api_key,
             base_url=base_url,
         )
         return AppContext(client=client)
@@ -248,14 +248,14 @@ def set_pending_config(config: Config) -> None:
 @asynccontextmanager
 async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     """Lifespan context manager for MCP server."""
-    logger.info("Initializing Thenvoi API client")
+    logger.info("Initializing Band API client")
     app_context = build_app_context(_pending_config)
-    logger.info("Thenvoi MCP server lifespan started successfully")
+    logger.info("Band MCP server lifespan started successfully")
 
     try:
         yield app_context
     finally:
-        logger.info("Thenvoi MCP server lifespan shutdown complete")
+        logger.info("Band MCP server lifespan shutdown complete")
 
 
 def get_app_context(ctx: AppContextType) -> AppContext:
@@ -283,7 +283,7 @@ def get_human_tools(ctx: AppContextType) -> Any:
     app_ctx = get_app_context(ctx)
     if app_ctx.human_tools is None:
         logger.warning(
-            "get_human_tools(): HumanTools not available. Ensure the Thenvoi "
+            "get_human_tools(): HumanTools not available. Ensure the Band "
             "SDK (INT-349) is installed and a human credential is configured."
         )
     return app_ctx.human_tools
@@ -374,7 +374,7 @@ if (
     )
 
 mcp = FastMCP(
-    name="thenvoi-mcp-server",
+    name="band-mcp-server",
     lifespan=app_lifespan,
     host=settings.host,
     port=settings.port,

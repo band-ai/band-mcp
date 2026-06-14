@@ -1,6 +1,6 @@
-"""Pytest configuration for thenvoi-mcp tests.
+"""Pytest configuration for band-mcp tests.
 
-Fixtures from thenvoi-testing-python are auto-loaded via pytest entry point.
+Fixtures from band-testing-python are auto-loaded via pytest entry point.
 We override mock_api_client to add v0.0.4 split namespace properties.
 """
 
@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
-from thenvoi_mcp.shared import AppContext
+from band_mcp.shared import AppContext
 
 
 def _assert_no_method_name_collisions() -> None:
@@ -20,7 +20,7 @@ def _assert_no_method_name_collisions() -> None:
     same group ever share a method name, tests would silently pass with wrong
     assertions.
     """
-    from thenvoi_rest import RestClient
+    from band_rest import RestClient
 
     try:
         client = RestClient(api_key="dummy", base_url="http://localhost")

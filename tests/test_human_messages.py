@@ -4,7 +4,7 @@ import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from thenvoi_mcp.tools.human.human_messages import (
+from band_mcp.tools.human.human_messages import (
     list_my_chat_messages,
     send_my_chat_message,
 )

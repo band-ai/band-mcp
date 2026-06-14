@@ -1,4 +1,4 @@
-"""Unit tests for ``thenvoi_mcp.tools.registrar``.
+"""Unit tests for ``band_mcp.tools.registrar``.
 
 Covers Phase 3 (INT-351) acceptance criteria:
 - Scope-filtered registration matches ``iter_tool_definitions(surface=...)``.
@@ -25,9 +25,9 @@ import pytest
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
 
-from thenvoi_mcp.config import Config
-from thenvoi_mcp.tools import registrar
-from thenvoi_mcp.tools.registrar import (
+from band_mcp.config import Config
+from band_mcp.tools import registrar
+from band_mcp.tools.registrar import (
     AGENT_ROOM_BOUND_TOOL_NAMES,
     _classify_tool,
     _extend_with_chat_id,
@@ -90,40 +90,38 @@ class _ToolDefinition:
 
 
 _TOOL_DEFINITIONS_LIST = [
-    _ToolDefinition("thenvoi_send_message", "agent", "send_message", _SendMessageInput),
-    _ToolDefinition("thenvoi_send_event", "agent", "send_event", _SimpleContentInput),
+    _ToolDefinition("band_send_message", "agent", "send_message", _SendMessageInput),
+    _ToolDefinition("band_send_event", "agent", "send_event", _SimpleContentInput),
     _ToolDefinition(
-        "thenvoi_add_participant", "agent", "add_participant", _IdentifierInput
+        "band_add_participant", "agent", "add_participant", _IdentifierInput
     ),
     _ToolDefinition(
-        "thenvoi_remove_participant", "agent", "remove_participant", _IdentifierInput
+        "band_remove_participant", "agent", "remove_participant", _IdentifierInput
     ),
-    _ToolDefinition("thenvoi_get_participants", "agent", "get_participants", _NoInput),
-    _ToolDefinition("thenvoi_lookup_peers", "agent", "lookup_peers", _LookupPeersInput),
-    _ToolDefinition("thenvoi_create_chatroom", "agent", "create_chatroom", _NoInput),
+    _ToolDefinition("band_get_participants", "agent", "get_participants", _NoInput),
+    _ToolDefinition("band_lookup_peers", "agent", "lookup_peers", _LookupPeersInput),
+    _ToolDefinition("band_create_chatroom", "agent", "create_chatroom", _NoInput),
+    _ToolDefinition("band_list_memories", "agent", "list_memories", _NoInput, "memory"),
     _ToolDefinition(
-        "thenvoi_list_memories", "agent", "list_memories", _NoInput, "memory"
-    ),
-    _ToolDefinition(
-        "thenvoi_send_my_chat_message",
+        "band_send_my_chat_message",
         "human",
         "send_my_chat_message",
         _HumanSendMessageInput,
     ),
-    _ToolDefinition("thenvoi_list_my_chats", "human", "list_my_chats", _NoInput),
-    _ToolDefinition("thenvoi_get_my_profile", "human", "get_my_profile", _NoInput),
+    _ToolDefinition("band_list_my_chats", "human", "list_my_chats", _NoInput),
+    _ToolDefinition("band_get_my_profile", "human", "get_my_profile", _NoInput),
     _ToolDefinition(
-        "thenvoi_list_my_contacts", "human", "list_my_contacts", _NoInput, "contacts"
+        "band_list_my_contacts", "human", "list_my_contacts", _NoInput, "contacts"
     ),
     _ToolDefinition(
-        "thenvoi_resolve_handle",
+        "band_resolve_handle",
         "human",
         "resolve_handle",
         _ResolveHandleInput,
         "contacts",
     ),
     _ToolDefinition(
-        "thenvoi_list_user_memories", "human", "list_user_memories", _NoInput, "memory"
+        "band_list_user_memories", "human", "list_user_memories", _NoInput, "memory"
     ),
 ]
 TOOL_DEFINITIONS = {
@@ -146,16 +144,16 @@ def iter_tool_definitions(
     ]
 
 
-_fake_thenvoi_tools = types.ModuleType("thenvoi.runtime.tools")
-_fake_thenvoi_tools.TOOL_DEFINITIONS = TOOL_DEFINITIONS
-_fake_thenvoi_tools.iter_tool_definitions = iter_tool_definitions
-_fake_thenvoi_runtime = types.ModuleType("thenvoi.runtime")
-_fake_thenvoi_runtime.tools = _fake_thenvoi_tools
+_fake_band_tools = types.ModuleType("thenvoi.runtime.tools")
+_fake_band_tools.TOOL_DEFINITIONS = TOOL_DEFINITIONS
+_fake_band_tools.iter_tool_definitions = iter_tool_definitions
+_fake_band_runtime = types.ModuleType("thenvoi.runtime")
+_fake_band_runtime.tools = _fake_band_tools
 _fake_thenvoi = types.ModuleType("thenvoi")
-_fake_thenvoi.runtime = _fake_thenvoi_runtime
+_fake_thenvoi.runtime = _fake_band_runtime
 sys.modules.setdefault("thenvoi", _fake_thenvoi)
-sys.modules.setdefault("thenvoi.runtime", _fake_thenvoi_runtime)
-sys.modules.setdefault("thenvoi.runtime.tools", _fake_thenvoi_tools)
+sys.modules.setdefault("thenvoi.runtime", _fake_band_runtime)
+sys.modules.setdefault("thenvoi.runtime.tools", _fake_band_tools)
 
 
 # ---------------------------------------------------------------------------
@@ -241,11 +239,11 @@ def test_tools_contacts_registers_contact_tools() -> None:
     register_tools(mcp, cfg)
     names = _registered_names(mcp)
 
-    assert "thenvoi_list_my_contacts" in names
-    assert "thenvoi_resolve_handle" in names
+    assert "band_list_my_contacts" in names
+    assert "band_resolve_handle" in names
     # Memory stays off
-    assert "thenvoi_list_memories" not in names
-    assert "thenvoi_list_user_memories" not in names
+    assert "band_list_memories" not in names
+    assert "band_list_user_memories" not in names
 
 
 def test_tools_memory_registers_memory_tools() -> None:
@@ -259,10 +257,10 @@ def test_tools_memory_registers_memory_tools() -> None:
     register_tools(mcp, cfg)
     names = _registered_names(mcp)
 
-    assert "thenvoi_list_memories" in names
-    assert "thenvoi_list_user_memories" in names
+    assert "band_list_memories" in names
+    assert "band_list_user_memories" in names
     # Contacts stay off
-    assert "thenvoi_list_my_contacts" not in names
+    assert "band_list_my_contacts" not in names
 
 
 def test_tools_both_registers_both_groups() -> None:
@@ -276,8 +274,8 @@ def test_tools_both_registers_both_groups() -> None:
     register_tools(mcp, cfg)
     names = _registered_names(mcp)
 
-    assert "thenvoi_list_my_contacts" in names
-    assert "thenvoi_list_memories" in names
+    assert "band_list_my_contacts" in names
+    assert "band_list_memories" in names
 
 
 def test_tools_empty_disables_both() -> None:
@@ -291,9 +289,9 @@ def test_tools_empty_disables_both() -> None:
     register_tools(mcp, cfg)
     names = _registered_names(mcp)
 
-    assert "thenvoi_list_memories" not in names
-    assert "thenvoi_list_user_memories" not in names
-    assert "thenvoi_list_my_contacts" not in names
+    assert "band_list_memories" not in names
+    assert "band_list_user_memories" not in names
+    assert "band_list_my_contacts" not in names
 
 
 # ---------------------------------------------------------------------------
@@ -310,22 +308,22 @@ def test_agent_room_bound_constant_matches_classifier() -> None:
 
 
 def test_agent_room_less_tool_not_classified_room_bound() -> None:
-    # thenvoi_create_chatroom does not take a room id on the agent surface.
-    definition = TOOL_DEFINITIONS["thenvoi_create_chatroom"]
+    # band_create_chatroom does not take a room id on the agent surface.
+    definition = TOOL_DEFINITIONS["band_create_chatroom"]
     is_agent, is_human = _classify_tool(definition)
     assert is_agent is False
     assert is_human is False
 
 
 def test_human_chat_id_tool_classified_room_bound() -> None:
-    definition = TOOL_DEFINITIONS["thenvoi_send_my_chat_message"]
+    definition = TOOL_DEFINITIONS["band_send_my_chat_message"]
     is_agent, is_human = _classify_tool(definition)
     assert is_agent is False
     assert is_human is True
 
 
 def test_human_room_less_tool_not_classified_room_bound() -> None:
-    definition = TOOL_DEFINITIONS["thenvoi_list_my_chats"]
+    definition = TOOL_DEFINITIONS["band_list_my_chats"]
     is_agent, is_human = _classify_tool(definition)
     assert is_agent is False
     assert is_human is False
@@ -341,20 +339,20 @@ async def test_unpinned_agent_schema_includes_chat_id() -> None:
     cfg = Config(scope=["agent"], tools=[], agent_key="k")
     register_tools(mcp, cfg)
 
-    t = await _list_tool(mcp, "thenvoi_send_message")
+    t = await _list_tool(mcp, "band_send_message")
     assert t is not None
     props = t.inputSchema.get("properties", {})
     required = t.inputSchema.get("required", [])
     assert "chat_id" in props
     assert "chat_id" in required
     # Room-less agent tool: no chat_id in schema.
-    cr = await _list_tool(mcp, "thenvoi_create_chatroom")
+    cr = await _list_tool(mcp, "band_create_chatroom")
     assert cr is not None
     assert "chat_id" not in cr.inputSchema.get("properties", {})
 
 
 def test_agent_room_bound_model_accepts_room_id_alias() -> None:
-    definition = TOOL_DEFINITIONS["thenvoi_send_message"]
+    definition = TOOL_DEFINITIONS["band_send_message"]
     extended = _extend_with_chat_id(definition.input_model, None)
     v1 = extended.model_validate({"content": "hi", "mentions": ["@x"], "room_id": "r1"})
     assert v1.chat_id == "r1"
@@ -376,7 +374,7 @@ async def test_unpinned_agent_handler_calls_get_agent_tools_with_chat_id(
     monkeypatch.setattr(registrar, "reset_agent_tools_cache", reset_spy)
     monkeypatch.setattr(registrar, "get_human_tools", MagicMock())
 
-    definition = TOOL_DEFINITIONS["thenvoi_send_message"]
+    definition = TOOL_DEFINITIONS["band_send_message"]
     extended = _extend_with_chat_id(definition.input_model, None)
 
     handler = make_handler(
@@ -413,12 +411,12 @@ async def test_unpinned_agent_handler_accepts_room_id_alias(
     monkeypatch.setattr(registrar, "reset_agent_tools_cache", MagicMock())
     monkeypatch.setattr(registrar, "get_human_tools", MagicMock())
 
-    definition = TOOL_DEFINITIONS["thenvoi_send_message"]
+    definition = TOOL_DEFINITIONS["band_send_message"]
     extended = _extend_with_chat_id(definition.input_model, None)
 
     # Exercise the dispatch path directly: validation via AliasChoices
     # resolves ``room_id`` to ``chat_id`` inside the extended input model.
-    from thenvoi_mcp.tools.registrar import _invoke
+    from band_mcp.tools.registrar import _invoke
 
     out = await _invoke(
         surface="agent",
@@ -437,10 +435,10 @@ async def test_unpinned_agent_handler_accepts_room_id_alias(
 
 
 async def test_validation_errors_report_fields() -> None:
-    definition = TOOL_DEFINITIONS["thenvoi_send_message"]
+    definition = TOOL_DEFINITIONS["band_send_message"]
     extended = _extend_with_chat_id(definition.input_model, None)
 
-    from thenvoi_mcp.tools.registrar import _invoke
+    from band_mcp.tools.registrar import _invoke
 
     with pytest.raises(ValueError, match="Invalid arguments") as exc_info:
         await _invoke(
@@ -468,7 +466,7 @@ async def test_pinned_agent_schema_hides_chat_id() -> None:
     cfg = Config(scope=["agent"], tools=[], agent_key="k", room_id="r_pinned")
     register_tools(mcp, cfg)
 
-    t = await _list_tool(mcp, "thenvoi_send_message")
+    t = await _list_tool(mcp, "band_send_message")
     assert t is not None
     props = t.inputSchema.get("properties", {})
     assert "chat_id" not in props
@@ -485,7 +483,7 @@ async def test_pinned_agent_handler_injects_room_id(
     monkeypatch.setattr(registrar, "reset_agent_tools_cache", MagicMock())
     monkeypatch.setattr(registrar, "get_human_tools", MagicMock())
 
-    definition = TOOL_DEFINITIONS["thenvoi_send_message"]
+    definition = TOOL_DEFINITIONS["band_send_message"]
     pinned = _extend_with_chat_id(definition.input_model, "r_pinned")
     handler = make_handler(
         tool_name=definition.name,
@@ -513,10 +511,10 @@ async def test_pinned_agent_handler_overrides_caller_chat_id(
     monkeypatch.setattr(registrar, "reset_agent_tools_cache", MagicMock())
     monkeypatch.setattr(registrar, "get_human_tools", MagicMock())
 
-    definition = TOOL_DEFINITIONS["thenvoi_send_message"]
+    definition = TOOL_DEFINITIONS["band_send_message"]
     pinned = _extend_with_chat_id(definition.input_model, "r_pinned")
 
-    from thenvoi_mcp.tools.registrar import _invoke
+    from band_mcp.tools.registrar import _invoke
 
     await _invoke(
         surface="agent",
@@ -544,7 +542,7 @@ async def test_unpinned_human_room_bound_advertises_chat_id() -> None:
     cfg = Config(scope=["human"], tools=[], user_key="k")
     register_tools(mcp, cfg)
 
-    t = await _list_tool(mcp, "thenvoi_send_my_chat_message")
+    t = await _list_tool(mcp, "band_send_my_chat_message")
     assert t is not None
     props = t.inputSchema.get("properties", {})
     required = t.inputSchema.get("required", [])
@@ -564,7 +562,7 @@ async def test_unpinned_human_handler_passes_chat_id_through(
     monkeypatch.setattr(registrar, "reset_agent_tools_cache", MagicMock())
     monkeypatch.setattr(registrar, "get_agent_tools", MagicMock())
 
-    definition = TOOL_DEFINITIONS["thenvoi_send_my_chat_message"]
+    definition = TOOL_DEFINITIONS["band_send_my_chat_message"]
     handler = make_handler(
         tool_name=definition.name,
         surface="human",
@@ -595,7 +593,7 @@ async def test_pinned_human_handler_injects_chat_id(
     monkeypatch.setattr(registrar, "reset_agent_tools_cache", MagicMock())
     monkeypatch.setattr(registrar, "get_agent_tools", MagicMock())
 
-    definition = TOOL_DEFINITIONS["thenvoi_send_my_chat_message"]
+    definition = TOOL_DEFINITIONS["band_send_my_chat_message"]
     pinned = _pin_existing_chat_id(definition.input_model, "r_pin")
     handler = make_handler(
         tool_name=definition.name,
@@ -619,7 +617,7 @@ async def test_pinned_human_room_bound_schema_hides_chat_id() -> None:
     cfg = Config(scope=["human"], tools=[], user_key="k", room_id="r_pin")
     register_tools(mcp, cfg)
 
-    t = await _list_tool(mcp, "thenvoi_send_my_chat_message")
+    t = await _list_tool(mcp, "band_send_my_chat_message")
     assert t is not None
     assert "chat_id" not in t.inputSchema.get("properties", {})
 
@@ -632,7 +630,7 @@ async def test_pinned_human_room_bound_schema_hides_chat_id() -> None:
 @pytest.mark.parametrize("pin", [None, "r_pin"])
 @pytest.mark.parametrize(
     "tool_name",
-    ["thenvoi_list_my_chats", "thenvoi_get_my_profile"],
+    ["band_list_my_chats", "band_get_my_profile"],
 )
 async def test_room_less_human_tools_schema_unchanged_by_pin(
     pin: str | None, tool_name: str
@@ -658,7 +656,7 @@ async def test_room_less_list_my_contacts_unchanged_by_pin() -> None:
     )
     register_tools(mcp, cfg)
 
-    t = await _list_tool(mcp, "thenvoi_list_my_contacts")
+    t = await _list_tool(mcp, "band_list_my_contacts")
     assert t is not None
     assert "chat_id" not in t.inputSchema.get("properties", {})
 
@@ -681,7 +679,7 @@ async def test_reset_agent_tools_cache_called_on_every_invocation(
     )
     monkeypatch.setattr(registrar, "get_human_tools", MagicMock())
 
-    definition = TOOL_DEFINITIONS["thenvoi_send_message"]
+    definition = TOOL_DEFINITIONS["band_send_message"]
     extended = _extend_with_chat_id(definition.input_model, None)
     handler = make_handler(
         tool_name=definition.name,
@@ -719,4 +717,4 @@ def test_new_tool_names_are_prefixed_no_collision_with_legacy() -> None:
     register_tools(mcp, cfg)
 
     for name in _registered_names(mcp):
-        assert name.startswith("thenvoi_"), name
+        assert name.startswith("band_"), name

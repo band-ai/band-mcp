@@ -4,7 +4,7 @@ import json
 
 
 from thenvoi_testing.factories import factory
-from thenvoi_mcp.tools.agent.agent_lifecycle import (
+from band_mcp.tools.agent.agent_lifecycle import (
     mark_agent_message_failed,
     mark_agent_message_processed,
     mark_agent_message_processing,

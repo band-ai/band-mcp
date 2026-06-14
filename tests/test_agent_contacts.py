@@ -3,7 +3,7 @@
 import json
 from unittest.mock import MagicMock
 
-from thenvoi_mcp.tools.agent.agent_contacts import (
+from band_mcp.tools.agent.agent_contacts import (
     add_agent_contact,
     list_agent_contact_requests,
     list_agent_contacts,

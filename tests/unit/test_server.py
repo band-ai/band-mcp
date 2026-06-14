@@ -1,4 +1,4 @@
-"""Unit tests for `thenvoi_mcp.server`.
+"""Unit tests for `band_mcp.server`.
 
 Focused on the pieces of `run()` that do non-trivial branching without
 actually starting FastMCP: the pure-legacy escape-hatch detection and its
@@ -11,8 +11,8 @@ import argparse
 
 import pytest
 
-from thenvoi_mcp import server as server_mod
-from thenvoi_mcp.config import Config
+from band_mcp import server as server_mod
+from band_mcp.config import Config
 
 
 # ---------------------------------------------------------------------------
@@ -37,15 +37,15 @@ def _make_args(**overrides: object) -> argparse.Namespace:
 
 
 def test_is_pure_legacy_invocation_true_when_only_legacy_key(monkeypatch):
-    monkeypatch.delenv("THENVOI_USER_KEY", raising=False)
-    monkeypatch.delenv("THENVOI_AGENT_KEY", raising=False)
     monkeypatch.delenv("BAND_USER_KEY", raising=False)
     monkeypatch.delenv("BAND_AGENT_KEY", raising=False)
-    monkeypatch.delenv("THENVOI_MCP_SCOPE", raising=False)
+    monkeypatch.delenv("BAND_USER_KEY", raising=False)
+    monkeypatch.delenv("BAND_AGENT_KEY", raising=False)
     monkeypatch.delenv("BAND_MCP_SCOPE", raising=False)
-    monkeypatch.delenv("THENVOI_MCP_TOOLS", raising=False)
+    monkeypatch.delenv("BAND_MCP_SCOPE", raising=False)
     monkeypatch.delenv("BAND_MCP_TOOLS", raising=False)
-    monkeypatch.delenv("THENVOI_MCP_ROOM_ID", raising=False)
+    monkeypatch.delenv("BAND_MCP_TOOLS", raising=False)
+    monkeypatch.delenv("BAND_MCP_ROOM_ID", raising=False)
     monkeypatch.delenv("BAND_MCP_ROOM_ID", raising=False)
 
     config = Config(legacy_key="thnv_u_abc", scope=[])
@@ -55,15 +55,15 @@ def test_is_pure_legacy_invocation_true_when_only_legacy_key(monkeypatch):
 
 def test_is_pure_legacy_invocation_false_when_cli_scope_set(monkeypatch):
     for name in (
-        "THENVOI_USER_KEY",
-        "THENVOI_AGENT_KEY",
         "BAND_USER_KEY",
         "BAND_AGENT_KEY",
-        "THENVOI_MCP_SCOPE",
+        "BAND_USER_KEY",
+        "BAND_AGENT_KEY",
         "BAND_MCP_SCOPE",
-        "THENVOI_MCP_TOOLS",
+        "BAND_MCP_SCOPE",
         "BAND_MCP_TOOLS",
-        "THENVOI_MCP_ROOM_ID",
+        "BAND_MCP_TOOLS",
+        "BAND_MCP_ROOM_ID",
         "BAND_MCP_ROOM_ID",
     ):
         monkeypatch.delenv(name, raising=False)
@@ -75,19 +75,19 @@ def test_is_pure_legacy_invocation_false_when_cli_scope_set(monkeypatch):
 
 def test_is_pure_legacy_invocation_false_when_new_env_set(monkeypatch):
     for name in (
-        "THENVOI_USER_KEY",
-        "THENVOI_AGENT_KEY",
         "BAND_USER_KEY",
         "BAND_AGENT_KEY",
-        "THENVOI_MCP_SCOPE",
+        "BAND_USER_KEY",
+        "BAND_AGENT_KEY",
         "BAND_MCP_SCOPE",
-        "THENVOI_MCP_TOOLS",
+        "BAND_MCP_SCOPE",
         "BAND_MCP_TOOLS",
-        "THENVOI_MCP_ROOM_ID",
+        "BAND_MCP_TOOLS",
+        "BAND_MCP_ROOM_ID",
         "BAND_MCP_ROOM_ID",
     ):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("THENVOI_USER_KEY", "thnv_u_explicit")
+    monkeypatch.setenv("BAND_USER_KEY", "thnv_u_explicit")
 
     config = Config(legacy_key="thnv_abc", scope=[])
     args = _make_args()
@@ -128,21 +128,21 @@ def test_escape_hatch_writes_scope_from_legacy_key(
     the surface loaded matches what AppContext.scope advertises downstream.
     """
     for name in (
-        "THENVOI_USER_KEY",
-        "THENVOI_AGENT_KEY",
         "BAND_USER_KEY",
         "BAND_AGENT_KEY",
-        "THENVOI_MCP_SCOPE",
+        "BAND_USER_KEY",
+        "BAND_AGENT_KEY",
         "BAND_MCP_SCOPE",
-        "THENVOI_MCP_TOOLS",
+        "BAND_MCP_SCOPE",
         "BAND_MCP_TOOLS",
-        "THENVOI_MCP_ROOM_ID",
+        "BAND_MCP_TOOLS",
+        "BAND_MCP_ROOM_ID",
         "BAND_MCP_ROOM_ID",
     ):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("THENVOI_API_KEY", legacy_key)
+    monkeypatch.setenv("BAND_API_KEY", legacy_key)
 
-    from thenvoi_mcp.config import ConfigError, resolve_config, validate
+    from band_mcp.config import ConfigError, resolve_config, validate
 
     args = _make_args()
     cli = {
@@ -175,21 +175,21 @@ def test_escape_hatch_user_legacy_key_maps_to_human_only(monkeypatch):
     log / register as `['human']`, not `['agent']`.
     """
     for name in (
-        "THENVOI_USER_KEY",
-        "THENVOI_AGENT_KEY",
         "BAND_USER_KEY",
         "BAND_AGENT_KEY",
-        "THENVOI_MCP_SCOPE",
+        "BAND_USER_KEY",
+        "BAND_AGENT_KEY",
         "BAND_MCP_SCOPE",
-        "THENVOI_MCP_TOOLS",
+        "BAND_MCP_SCOPE",
         "BAND_MCP_TOOLS",
-        "THENVOI_MCP_ROOM_ID",
+        "BAND_MCP_TOOLS",
+        "BAND_MCP_ROOM_ID",
         "BAND_MCP_ROOM_ID",
     ):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("THENVOI_API_KEY", "thnv_u_xyz")
+    monkeypatch.setenv("BAND_API_KEY", "thnv_u_xyz")
 
-    from thenvoi_mcp.config import _legacy_key_capabilities
+    from band_mcp.config import _legacy_key_capabilities
 
     legacy_human, legacy_agent = _legacy_key_capabilities("thnv_u_xyz")
     assert legacy_human is True

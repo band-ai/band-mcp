@@ -5,7 +5,7 @@ import json
 import pytest
 
 from thenvoi_testing.factories import factory
-from thenvoi_mcp.tools.agent.agent_events import (
+from band_mcp.tools.agent.agent_events import (
     VALID_EVENT_TYPES,
     create_agent_chat_event,
 )

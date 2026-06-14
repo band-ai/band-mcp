@@ -44,8 +44,8 @@ from pydantic import AliasChoices, BaseModel, Field, ValidationError, create_mod
 from pydantic.fields import FieldInfo
 from pydantic.json_schema import SkipJsonSchema
 
-from thenvoi_mcp.config import Config
-from thenvoi_mcp.shared import (
+from band_mcp.config import Config
+from band_mcp.shared import (
     AppContextType,
     get_agent_tools,
     get_human_tools,
@@ -58,7 +58,7 @@ from thenvoi_mcp.shared import (
 # ---------------------------------------------------------------------------
 #
 # These are the agent tools whose *current* MCP handler in
-# ``src/thenvoi_mcp/tools/agent/*.py`` takes ``chat_id`` as a kwarg (i.e. the
+# ``src/band_mcp/tools/agent/*.py`` takes ``chat_id`` as a kwarg (i.e. the
 # handler is room-scoped). Because ``AgentTools`` is constructor-scoped, the
 # Phase 1 SDK input models do not carry a room field — so the registrar has
 # to re-add it at the transport layer.
@@ -68,12 +68,12 @@ from thenvoi_mcp.shared import (
 # has an obvious pivot point for the handwritten-handler deletion.
 AGENT_ROOM_BOUND_TOOL_NAMES: frozenset[str] = frozenset(
     {
-        "thenvoi_send_message",
-        "thenvoi_send_event",
-        "thenvoi_add_participant",
-        "thenvoi_remove_participant",
-        "thenvoi_get_participants",
-        "thenvoi_lookup_peers",
+        "band_send_message",
+        "band_send_event",
+        "band_add_participant",
+        "band_remove_participant",
+        "band_get_participants",
+        "band_lookup_peers",
     }
 )
 
@@ -414,14 +414,14 @@ def register_tools(mcp: FastMCP, config: Config) -> None:
     room-bound tools on either surface).
 
     Safe to call after the handwritten ``tools.agent.*`` / ``tools.human.*``
-    modules have been imported: SDK tool names are ``thenvoi_``-prefixed
+    modules have been imported: SDK tool names are ``band_``-prefixed
     and do not collide with the legacy handwritten handler names.
     """
     try:
         from thenvoi.runtime.tools import iter_tool_definitions  # type: ignore[import-not-found]
     except Exception as exc:  # pragma: no cover - import-time guard
         logger.warning(
-            "register_tools(): Thenvoi SDK not available — skipping SDK-driven "
+            "register_tools(): Band SDK not available — skipping SDK-driven "
             "tool registration. Legacy handwritten handlers will still serve "
             "traffic. (%s)",
             exc,

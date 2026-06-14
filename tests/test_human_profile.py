@@ -3,7 +3,7 @@
 import json
 from unittest.mock import MagicMock
 
-from thenvoi_mcp.tools.human.human_profile import (
+from band_mcp.tools.human.human_profile import (
     get_my_profile,
     list_my_peers,
     update_my_profile,

@@ -3,7 +3,7 @@
 import json
 
 from thenvoi_testing.factories import factory
-from thenvoi_mcp.tools.human.human_agents import (
+from band_mcp.tools.human.human_agents import (
     list_my_agents,
     register_my_agent,
 )

@@ -2,12 +2,12 @@ import json
 import logging
 from typing import Any, Dict, Literal, Optional
 
-from thenvoi_rest import (
+from band_rest import (
     ChatEventMessageType,
     ChatEventRequest,
 )
 
-from thenvoi_mcp.shared import AppContextType, get_app_context, mcp, serialize_response
+from band_mcp.shared import AppContextType, get_app_context, mcp, serialize_response
 
 logger = logging.getLogger(__name__)
 

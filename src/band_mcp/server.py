@@ -3,7 +3,7 @@
 Phase 2 (INT-350) adds `--user-key`, `--agent-key`, `--room-id`, `--scope`,
 and `--tools` CLI flags, resolves them through `config.resolve_config`, and
 emits `config.warnings` before the server accepts traffic. The legacy
-`THENVOI_API_KEY` path still works end-to-end.
+`BAND_API_KEY` path still works end-to-end.
 
 Tool registration still runs through the current prefix-inference path; the
 registrar that consumes `config.scope` / `config.tools` lands in Phase 3
@@ -17,8 +17,8 @@ import os
 from dataclasses import replace
 from typing import Literal, Sequence
 
-from thenvoi_mcp import __version__
-from thenvoi_mcp.config import (
+from band_mcp import __version__
+from band_mcp.config import (
     Config,
     AGENT_KEY_PREFIXES,
     LEGACY_KEY_PREFIXES,
@@ -29,14 +29,14 @@ from thenvoi_mcp.config import (
     settings,
     validate,
 )
-from thenvoi_mcp.shared import (
+from band_mcp.shared import (
     AppContextType,
     get_app_context,
     logger,
     mcp,
     set_pending_config,
 )
-from thenvoi_mcp.tools.registrar import register_tools
+from band_mcp.tools.registrar import register_tools
 
 
 def get_key_type(key: str) -> str:
@@ -63,7 +63,7 @@ def load_tools(key_type: str) -> None:
     SDK-driven registrar replaces this in Phase 3.
     """
     if key_type in ("agent", "legacy"):
-        from thenvoi_mcp.tools.agent import (  # noqa: F401
+        from band_mcp.tools.agent import (  # noqa: F401
             agent_chats,
             agent_contacts,
             agent_events,
@@ -76,7 +76,7 @@ def load_tools(key_type: str) -> None:
         logger.debug("Loaded agent tools")
 
     if key_type in ("user", "legacy"):
-        from thenvoi_mcp.tools.human import (  # noqa: F401
+        from band_mcp.tools.human import (  # noqa: F401
             human_agents,
             human_chats,
             human_contacts,
@@ -107,13 +107,13 @@ def _choose_legacy_key_type(config: Config) -> str:
     During the transition the handwritten tools still key off prefix inference.
     Scope-specific credentials must honor the resolved scope instead of a stale
     legacy key; otherwise a process can log scope=["human"] while loading agent
-    tools from `THENVOI_API_KEY`.
+    tools from `BAND_API_KEY`.
     """
     if config.user_key or config.agent_key:
         return _key_type_from_scope(config.scope)
     if config.legacy_key:
         return get_key_type(config.legacy_key)
-    return get_key_type(settings.thenvoi_api_key)
+    return get_key_type(settings.band_api_key)
 
 
 @mcp.tool()
@@ -123,7 +123,7 @@ def health_check(ctx: AppContextType) -> str:
     client = app_ctx.client
     key_type = _key_type_from_scope(app_ctx.scope)
     if key_type == "unknown":
-        key_type = get_key_type(settings.thenvoi_api_key)
+        key_type = get_key_type(settings.band_api_key)
     try:
         if key_type == "user":
             client.human_api_agents.list_my_agents()
@@ -131,7 +131,7 @@ def health_check(ctx: AppContextType) -> str:
             client.agent_api_identity.get_agent_me()
         else:  # legacy / unknown - try human path
             client.human_api_agents.list_my_agents()
-        return f"OK | {key_type} | {settings.thenvoi_base_url}"
+        return f"OK | {key_type} | {settings.band_base_url}"
     except Exception as e:
         return f"Failed | {key_type} | {e}"
 
@@ -139,7 +139,7 @@ def health_check(ctx: AppContextType) -> str:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Thenvoi MCP Server - Connect AI agents to Thenvoi platform",
+        description="Band MCP Server - Connect AI agents to Band platform",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Transport Modes:
@@ -150,20 +150,20 @@ Transport Modes:
           Runs as a persistent HTTP service with Server-Sent Events.
 
 Examples:
-  thenvoi-mcp                                 # Run with STDIO (default)
-  thenvoi-mcp --transport sse                 # Run as HTTP server on 127.0.0.1:8000
-  thenvoi-mcp --scope agent,human             # Serve both scopes
-  thenvoi-mcp --scope agent --tools contacts  # Agent + opt-in contacts tools
-  thenvoi-mcp --scope agent --room-id r_123   # Pin to a single room
+  band-mcp                                 # Run with STDIO (default)
+  band-mcp --transport sse                 # Run as HTTP server on 127.0.0.1:8000
+  band-mcp --scope agent,human             # Serve both scopes
+  band-mcp --scope agent --tools contacts  # Agent + opt-in contacts tools
+  band-mcp --scope agent --room-id r_123   # Pin to a single room
 
 Environment Variables:
-  THENVOI_USER_KEY / BAND_USER_KEY      User (human scope) API key
-  THENVOI_AGENT_KEY / BAND_AGENT_KEY    Agent scope API key
-  THENVOI_MCP_SCOPE / BAND_MCP_SCOPE    Comma-separated scopes (default: agent)
-  THENVOI_MCP_TOOLS / BAND_MCP_TOOLS    Opt-in tool groups: contacts, memory
-  THENVOI_MCP_ROOM_ID / BAND_MCP_ROOM_ID  Optional pinned room id
-  THENVOI_API_KEY       Legacy single-key path (still supported as fallback)
-  THENVOI_BASE_URL      Base URL for Thenvoi API (default: https://app.thenvoi.com)
+  BAND_USER_KEY         User (human scope) API key
+  BAND_AGENT_KEY        Agent scope API key
+  BAND_MCP_SCOPE        Comma-separated scopes (default: agent)
+  BAND_MCP_TOOLS        Opt-in tool groups: contacts, memory
+  BAND_MCP_ROOM_ID      Optional pinned room id
+  BAND_API_KEY          Legacy single-key path (still supported as fallback)
+  BAND_BASE_URL         Base URL for Band API (default: https://app.band.ai)
   TRANSPORT             Transport mode: stdio or sse (default: stdio)
   HOST                  Host to bind for SSE mode (default: 127.0.0.1)
   PORT                  Port to bind for SSE mode (default: 8000)
@@ -173,7 +173,7 @@ Environment Variables:
     parser.add_argument(
         "--version",
         action="version",
-        version=f"thenvoi-mcp {__version__}",
+        version=f"band-mcp {__version__}",
     )
 
     parser.add_argument("--user-key", dest="user_key", type=str, default=None)
@@ -283,14 +283,14 @@ def run() -> None:
     try:
         validate(config)
     except ConfigError as exc:
-        # Fall back to the pure-legacy path: if THENVOI_API_KEY is set and the
+        # Fall back to the pure-legacy path: if BAND_API_KEY is set and the
         # operator supplied no explicit scope/keys, honor the old behavior.
         # This keeps existing deployments booting even when validate() would
         # otherwise complain. We detect "no new config provided" by checking
         # that CLI is empty AND no new-style env vars were set.
         if _is_pure_legacy_invocation(args, config):
             logger.info(
-                "Proceeding via legacy THENVOI_API_KEY path (no new-style "
+                "Proceeding via legacy BAND_API_KEY path (no new-style "
                 "credentials or scope supplied)."
             )
         else:
@@ -303,9 +303,9 @@ def run() -> None:
     #   1. Startup logs below print `Resolved scope`; that line must match the
     #      tools that `load_tools(key_type)` will actually register.
     #   2. Phase 3's registrar reads `AppContext.scope` to pick the surface.
-    #      A `thnv_u_*` legacy key must land there as ["human"], not ["agent"].
+    #      A `band_u_*` legacy key must land there as ["human"], not ["agent"].
     # We do this for every pure-legacy invocation (validate() may have passed
-    # for an all-capable `thnv_*` key, in which case config.scope is still the
+    # for an all-capable `band_*` key, in which case config.scope is still the
     # default ["agent"] but load_tools will load both surfaces).
     if _is_pure_legacy_invocation(args, config):
         config = _apply_legacy_scope_writeback(config)
@@ -318,12 +318,12 @@ def run() -> None:
     elif config.user_key or config.agent_key:
         key_type = _choose_legacy_key_type(config)
     else:
-        key_type = get_key_type(settings.thenvoi_api_key)
+        key_type = get_key_type(settings.band_api_key)
     load_tools(key_type)
 
     # Phase 3 (INT-351): SDK-driven registrar. Registers every
     # ``iter_tool_definitions(surface=s, ...)`` entry for each scope in
-    # ``config.scope``. SDK tool names are ``thenvoi_``-prefixed and do not
+    # ``config.scope``. SDK tool names are ``band_``-prefixed and do not
     # collide with the legacy handwritten handler names above — both surfaces
     # coexist during the Phase 3 → Phase 4 transition. Phase 4 (INT-352)
     # deletes ``load_tools`` and the handwritten handlers.
@@ -337,8 +337,8 @@ def run() -> None:
     if args.port is not None:
         mcp.settings.port = args.port
 
-    logger.info("Starting thenvoi-mcp-server v%s", __version__)
-    logger.info("Base URL: %s", settings.thenvoi_base_url)
+    logger.info("Starting band-mcp-server v%s", __version__)
+    logger.info("Base URL: %s", settings.band_base_url)
     logger.info("API key type: %s", key_type)
     logger.info("Resolved scope: %s", config.scope or "<none>")
     logger.info("Resolved tools: %s", config.tools or "<none>")
@@ -359,7 +359,7 @@ def run() -> None:
 
 
 def _is_pure_legacy_invocation(args: argparse.Namespace, config: Config) -> bool:
-    """True when the operator set only THENVOI_API_KEY and no new flags/envs.
+    """True when the operator set only BAND_API_KEY and no new flags/envs.
 
     Used to preserve backward compatibility: an operator who never touched the
     new flags should keep booting even if `validate()` would otherwise fail on
@@ -376,15 +376,10 @@ def _is_pure_legacy_invocation(args: argparse.Namespace, config: Config) -> bool
         return False
     # No new-style env vars.
     new_envs = (
-        "THENVOI_USER_KEY",
-        "THENVOI_AGENT_KEY",
         "BAND_USER_KEY",
         "BAND_AGENT_KEY",
-        "THENVOI_MCP_SCOPE",
         "BAND_MCP_SCOPE",
-        "THENVOI_MCP_TOOLS",
         "BAND_MCP_TOOLS",
-        "THENVOI_MCP_ROOM_ID",
         "BAND_MCP_ROOM_ID",
     )
     return not any(os.environ.get(name) for name in new_envs)
