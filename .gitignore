@@ -28,6 +28,7 @@ env/
 
 # Environment Variables
 .env
+.env.test
 
 # IDE
 .vscode/
