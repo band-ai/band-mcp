@@ -18,8 +18,6 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that pr
 
 Every tool name changed. Tools are now prefixed with `band_`, and the agent surface was reshaped when the handwritten handlers were deleted in favor of the SDK-driven registrar. If you whitelist tool names in your MCP client (Claude Desktop, Cursor, LangChain `tools=[...]`), expect breakage until you update them.
 
-See the [CHANGELOG](CHANGELOG.md#migration--tool-name-changes) for the full old-name → new-name table.
-
 Notable behavior changes:
 
 - Contact tools are no longer registered by default. Pass `--tools contacts` to restore them.
