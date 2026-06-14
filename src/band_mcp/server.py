@@ -1,13 +1,12 @@
 """MCP server entry point.
 
-Phase 2 (INT-350) adds `--user-key`, `--agent-key`, `--room-id`, `--scope`,
-and `--tools` CLI flags, resolves them through `config.resolve_config`, and
-emits `config.warnings` before the server accepts traffic. The legacy
-`BAND_API_KEY` path still works end-to-end.
+INT-338 adds dual-credential configuration: `--user-key`, `--agent-key`,
+`--room-id`, `--scope`, `--tools` CLI flags (plus matching env vars). Tool
+registration runs through the SDK-driven registrar (`tools/registrar.py`).
 
-Tool registration still runs through the current prefix-inference path; the
-registrar that consumes `config.scope` / `config.tools` lands in Phase 3
-(INT-351).
+Legacy `BAND_API_KEY` is still supported as a fallback. When it's the only
+credential supplied, `config.scope` is rewritten from the key's capabilities
+so the advertised tool surface matches what the key can actually call.
 """
 
 from __future__ import annotations
@@ -15,14 +14,11 @@ from __future__ import annotations
 import argparse
 import os
 from dataclasses import replace
-from typing import Literal, Sequence
+from typing import Literal
 
 from band_mcp import __version__
 from band_mcp.config import (
     Config,
-    AGENT_KEY_PREFIXES,
-    LEGACY_KEY_PREFIXES,
-    USER_KEY_PREFIXES,
     ConfigError,
     _legacy_key_capabilities,
     resolve_config,
@@ -39,101 +35,28 @@ from band_mcp.shared import (
 from band_mcp.tools.registrar import register_tools
 
 
-def get_key_type(key: str) -> str:
-    """Get API key type from prefix.
-
-    Key formats:
-    - User keys: thnv_u_<timestamp>_<random> or band_u_<...>
-    - Agent keys: thnv_a_<timestamp>_<random> or band_a_<...>
-    - Legacy keys: thnv_<timestamp>_<random> or band_<...> (loads all tools)
-    """
-    if key.startswith(USER_KEY_PREFIXES):
-        return "user"
-    if key.startswith(AGENT_KEY_PREFIXES):
-        return "agent"
-    if key.startswith(LEGACY_KEY_PREFIXES):
-        return "legacy"
-    return "unknown"
-
-
-def load_tools(key_type: str) -> None:
-    """Load tools based on API key type.
-
-    Tools register themselves via @mcp.tool() decorator on import. The
-    SDK-driven registrar replaces this in Phase 3.
-    """
-    if key_type in ("agent", "legacy"):
-        from band_mcp.tools.agent import (  # noqa: F401
-            agent_chats,
-            agent_contacts,
-            agent_events,
-            agent_identity,
-            agent_lifecycle,
-            agent_messages,
-            agent_participants,
-        )
-
-        logger.debug("Loaded agent tools")
-
-    if key_type in ("user", "legacy"):
-        from band_mcp.tools.human import (  # noqa: F401
-            human_agents,
-            human_chats,
-            human_contacts,
-            human_messages,
-            human_participants,
-            human_profile,
-        )
-
-        logger.debug("Loaded human tools")
-
-
-def _key_type_from_scope(scope: Sequence[str]) -> str:
-    """Map resolved scopes back to the legacy handwritten loader label."""
-    has_agent = "agent" in scope
-    has_human = "human" in scope
-    if has_agent and has_human:
-        return "legacy"
-    if has_agent:
-        return "agent"
-    if has_human:
-        return "user"
-    return "unknown"
-
-
-def _choose_legacy_key_type(config: Config) -> str:
-    """Pick the `get_key_type` return value for the legacy tool loader.
-
-    During the transition the handwritten tools still key off prefix inference.
-    Scope-specific credentials must honor the resolved scope instead of a stale
-    legacy key; otherwise a process can log scope=["human"] while loading agent
-    tools from `BAND_API_KEY`.
-    """
-    if config.user_key or config.agent_key:
-        return _key_type_from_scope(config.scope)
-    if config.legacy_key:
-        return get_key_type(config.legacy_key)
-    return get_key_type(settings.band_api_key)
-
-
 @mcp.tool()
-def health_check(ctx: AppContextType) -> str:
+async def health_check(ctx: AppContextType) -> str:
     """Test MCP server and API connectivity."""
     app_ctx = get_app_context(ctx)
-    client = app_ctx.client
-    key_type = _key_type_from_scope(app_ctx.scope)
-    if key_type == "unknown":
-        key_type = get_key_type(settings.band_api_key)
-    try:
-        if key_type == "user":
-            client.human_api_agents.list_my_agents()
-        elif key_type == "agent":
-            client.agent_api_identity.get_agent_me()
-        else:  # legacy / unknown - try human path
-            client.human_api_agents.list_my_agents()
-        return f"OK | {key_type} | {settings.band_base_url}"
-    except Exception as e:
-        return f"Failed | {key_type} | {e}"
+    checked: list[str] = []
+    if app_ctx.human_rest is not None:
+        surface = "human"
+        try:
+            await app_ctx.human_rest.human_api_agents.list_my_agents()
+            checked.append(surface)
+        except Exception as exc:
+            return f"Failed | {surface} | {exc}"
+    if app_ctx.agent_rest is not None:
+        surface = "agent"
+        try:
+            await app_ctx.agent_rest.agent_api_identity.get_agent_me()
+            checked.append(surface)
+        except Exception as exc:
+            return f"Failed | {surface} | {exc}"
+    if checked:
+        return f"OK | {','.join(checked)} | {settings.band_base_url}"
+    return "Failed | no credential configured"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -245,17 +168,30 @@ def _cli_mapping(args: argparse.Namespace) -> dict[str, object]:
     }
 
 
-def _apply_legacy_scope_writeback(
-    config: Config,
-) -> Config:
-    """Return config with scope rewritten to match a pure legacy key."""
-    legacy_human, legacy_agent = _legacy_key_capabilities(config.legacy_key)
-    legacy_scope: list[Literal["agent", "human"]] = []
-    if legacy_agent:
-        legacy_scope.append("agent")
-    if legacy_human:
-        legacy_scope.append("human")
-    return replace(config, scope=legacy_scope)
+def _is_pure_legacy_invocation(args: argparse.Namespace, config: Config) -> bool:
+    """True when the operator set only BAND_API_KEY and no new flags/envs.
+
+    Used to preserve backward compatibility: an operator who never touched the
+    new flags should keep booting even if `validate()` would otherwise fail on
+    the default `--scope agent` with no agent credential, as long as the
+    legacy key is present and can serve something. Also triggers the scope
+    write-back so the advertised surface matches what the legacy key can call.
+    """
+    if config.legacy_key is None:
+        return False
+    if any(
+        getattr(args, attr) is not None
+        for attr in ("user_key", "agent_key", "room_id", "scope", "tools")
+    ):
+        return False
+    new_envs = (
+        "BAND_USER_KEY",
+        "BAND_AGENT_KEY",
+        "BAND_MCP_SCOPE",
+        "BAND_MCP_TOOLS",
+        "BAND_MCP_ROOM_ID",
+    )
+    return not any(os.environ.get(name) for name in new_envs)
 
 
 def run() -> None:
@@ -264,11 +200,14 @@ def run() -> None:
     Order of operations:
     1. Parse CLI flags.
     2. Resolve the Config (dual-credential + scope/tools/room_id).
-    3. Validate; raise ConfigError to exit before FastMCP starts.
+    3. Validate; raise ConfigError to exit before FastMCP starts, unless this
+       is a pure-legacy (BAND_API_KEY-only) invocation.
     4. Emit every ConfigWarning entry at WARN level.
-    5. Hand the Config to the lifespan (so AppContext picks it up).
-    6. Register tools (legacy prefix path until Phase 3).
-    7. Start FastMCP.
+    5. For pure-legacy invocations, rewrite `config.scope` from the legacy
+       key's capabilities so the advertised surface matches.
+    6. Hand the Config to the lifespan (so AppContext picks it up).
+    7. Register SDK-driven tools.
+    8. Start FastMCP.
     """
     args = parse_args()
 
@@ -286,9 +225,9 @@ def run() -> None:
         # Fall back to the pure-legacy path: if BAND_API_KEY is set and the
         # operator supplied no explicit scope/keys, honor the old behavior.
         # This keeps existing deployments booting even when validate() would
-        # otherwise complain. We detect "no new config provided" by checking
-        # that CLI is empty AND no new-style env vars were set.
-        if _is_pure_legacy_invocation(args, config):
+        # otherwise complain.
+        legacy_human, legacy_agent = _legacy_key_capabilities(config.legacy_key)
+        if _is_pure_legacy_invocation(args, config) and (legacy_human or legacy_agent):
             logger.info(
                 "Proceeding via legacy BAND_API_KEY path (no new-style "
                 "credentials or scope supplied)."
@@ -297,37 +236,33 @@ def run() -> None:
             logger.error("Configuration error: %s", exc)
             raise SystemExit(2) from exc
 
-    # Escape-hatch scope write-back (C2/I3): when this is a pure-legacy
-    # invocation, replace the default scope (["agent"]) with whatever the
-    # legacy key actually serves. Two reasons:
-    #   1. Startup logs below print `Resolved scope`; that line must match the
-    #      tools that `load_tools(key_type)` will actually register.
-    #   2. Phase 3's registrar reads `AppContext.scope` to pick the surface.
-    #      A `band_u_*` legacy key must land there as ["human"], not ["agent"].
-    # We do this for every pure-legacy invocation (validate() may have passed
-    # for an all-capable `band_*` key, in which case config.scope is still the
-    # default ["agent"] but load_tools will load both surfaces).
+    # Escape-hatch scope write-back: when this is a pure-legacy invocation,
+    # replace the default scope (["agent"]) with whatever the legacy key
+    # actually serves. This keeps the advertised tool surface consistent with
+    # the credential's capabilities — a `thnv_u_*` legacy key lands as
+    # ["human"], not ["agent"].
     if _is_pure_legacy_invocation(args, config):
-        config = _apply_legacy_scope_writeback(config)
+        legacy_human, legacy_agent = _legacy_key_capabilities(config.legacy_key)
+        legacy_scope: list[Literal["agent", "human"]] = []
+        if legacy_agent:
+            legacy_scope.append("agent")
+        if legacy_human:
+            legacy_scope.append("human")
+        config = replace(config, scope=legacy_scope)
 
     set_pending_config(config)
 
-    # Legacy tool loading — the registrar replaces this in Phase 3.
-    if config.legacy_key and not (config.user_key or config.agent_key):
-        key_type = get_key_type(config.legacy_key)
-    elif config.user_key or config.agent_key:
-        key_type = _choose_legacy_key_type(config)
-    else:
-        key_type = get_key_type(settings.band_api_key)
-    load_tools(key_type)
-
-    # Phase 3 (INT-351): SDK-driven registrar. Registers every
+    # SDK-driven registrar (INT-351): registers every
     # ``iter_tool_definitions(surface=s, ...)`` entry for each scope in
-    # ``config.scope``. SDK tool names are ``band_``-prefixed and do not
-    # collide with the legacy handwritten handler names above — both surfaces
-    # coexist during the Phase 3 → Phase 4 transition. Phase 4 (INT-352)
-    # deletes ``load_tools`` and the handwritten handlers.
-    register_tools(mcp, config)
+    # ``config.scope``. Single source of truth for tool definitions, shared
+    # with ``band-sdk-python``.
+    try:
+        register_tools(mcp, config)
+    except ConfigError as exc:
+        # Missing SDK is fatal (INT-352). Fall out cleanly with exit code 2 so
+        # operators see the actionable message instead of a traceback.
+        logger.error("Configuration error: %s", exc)
+        raise SystemExit(2) from exc
 
     # Determine transport mode (CLI args override env vars)
     transport: Literal["stdio", "sse"] = args.transport or settings.transport
@@ -339,7 +274,6 @@ def run() -> None:
 
     logger.info("Starting band-mcp-server v%s", __version__)
     logger.info("Base URL: %s", settings.band_base_url)
-    logger.info("API key type: %s", key_type)
     logger.info("Resolved scope: %s", config.scope or "<none>")
     logger.info("Resolved tools: %s", config.tools or "<none>")
     if config.room_id:
@@ -356,33 +290,6 @@ def run() -> None:
         logger.info("Server ready - listening on http://%s:%s", host, port)
         logger.info("SSE endpoint: /sse | Messages endpoint: /messages/")
         mcp.run(transport="sse")
-
-
-def _is_pure_legacy_invocation(args: argparse.Namespace, config: Config) -> bool:
-    """True when the operator set only BAND_API_KEY and no new flags/envs.
-
-    Used to preserve backward compatibility: an operator who never touched the
-    new flags should keep booting even if `validate()` would otherwise fail on
-    the default `--scope agent` with no agent credential, as long as the
-    legacy key is present and can serve something.
-    """
-    if config.legacy_key is None:
-        return False
-    # No new-style CLI flags.
-    if any(
-        getattr(args, attr) is not None
-        for attr in ("user_key", "agent_key", "room_id", "scope", "tools")
-    ):
-        return False
-    # No new-style env vars.
-    new_envs = (
-        "BAND_USER_KEY",
-        "BAND_AGENT_KEY",
-        "BAND_MCP_SCOPE",
-        "BAND_MCP_TOOLS",
-        "BAND_MCP_ROOM_ID",
-    )
-    return not any(os.environ.get(name) for name in new_envs)
 
 
 if __name__ == "__main__":

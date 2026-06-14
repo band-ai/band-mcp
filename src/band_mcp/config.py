@@ -131,26 +131,21 @@ settings = Settings()
 # ---------------------------------------------------------------------------
 
 
-USER_KEY_PREFIXES = ("thnv_u_", "band_u_")
-AGENT_KEY_PREFIXES = ("thnv_a_", "band_a_")
-LEGACY_KEY_PREFIXES = ("thnv_", "band_")
-
-
 def _legacy_key_capabilities(legacy_key: str | None) -> tuple[bool, bool]:
     """Return (can_serve_human, can_serve_agent) for a legacy key.
 
     - `thnv_u_...` / `band_u_...` — user key, human only.
     - `thnv_a_...` / `band_a_...` — agent key, agent only.
-    - `thnv_...` / `band_...`   — legacy all-capable, both scopes.
+    - `thnv_...` / `band_...`     — legacy all-capable, both scopes.
     - Anything else (including None / empty) — serves neither scope.
     """
     if not legacy_key:
         return (False, False)
-    if legacy_key.startswith(USER_KEY_PREFIXES):
+    if legacy_key.startswith(("thnv_u_", "band_u_")):
         return (True, False)
-    if legacy_key.startswith(AGENT_KEY_PREFIXES):
+    if legacy_key.startswith(("thnv_a_", "band_a_")):
         return (False, True)
-    if legacy_key.startswith(LEGACY_KEY_PREFIXES):
+    if legacy_key.startswith(("thnv_", "band_")):
         return (True, True)
     return (False, False)
 
@@ -204,20 +199,6 @@ def _normalize_list_value(raw: str | Sequence[str] | None) -> list[str]:
         seen.add(clean)
         out.append(clean)
     return out
-
-
-def _is_explicit_empty_cli_value(value: object) -> bool:
-    """Return True for CLI shapes produced by an explicit empty list flag."""
-    if value == "":
-        return True
-    if isinstance(value, (list, tuple)) and value:
-        tokens: list[str] = []
-        for entry in value:
-            if not isinstance(entry, str):
-                return False
-            tokens.extend(entry.split(","))
-        return all(token.strip() == "" for token in tokens)
-    return False
 
 
 def _resolve_list(
@@ -377,9 +358,9 @@ def resolve_config(
 
     # --- Tools -------------------------------------------------------------
     cli_tools = cli.get("tools")
-    # `--tools ""` should produce [] and override any env/default values.
-    # Argparse's append action returns [""], while direct callers may pass "".
-    explicit_empty = _is_explicit_empty_cli_value(cli_tools)
+    # `--tools ""` should produce []: detect that here. An empty string from
+    # argparse (default=None) signals the operator explicitly cleared the list.
+    explicit_empty = isinstance(cli_tools, str) and cli_tools == ""
     tools_raw = _resolve_list(
         cli_tools
         if cli_tools is None or isinstance(cli_tools, (str, list, tuple))

@@ -9,6 +9,9 @@ dependencies = [
     "mcp[cli]>=1.23.0",
     "pydantic-settings>=2.1.0",
     "band-client-rest>=0.0.10",
+    # band-sdk provides HumanTools, AgentTools, and iter_tool_definitions.
+    # Raise this floor when a new tool-definition contract lands.
+    "band-sdk>=1.0.0",
     "uvicorn>=0.30.0",  # Required for SSE transport mode
 ]
 

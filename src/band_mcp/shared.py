@@ -1,40 +1,32 @@
 """Shared app context, logger, and FastMCP singleton for band-mcp.
 
-Phase 2 (INT-350) extends `AppContext` with dual REST clients:
-`human_rest` (bound to `user_key` or a human-capable legacy key) and
-`agent_rest` (bound to `agent_key` or an agent-capable legacy key). The
-single `client` attribute is retained during the transition so the
-currently-handwritten tools in `tools/agent/` and `tools/human/` keep
-working; Phase 4 (INT-352) deletes those and `client` goes with them.
+`AppContext` carries two async REST clients: `human_rest` (bound to
+`user_key` or a human-capable legacy key) and `agent_rest` (bound to
+`agent_key` or an agent-capable legacy key). Either may be None when the
+corresponding scope is not served by the current config.
 
-HumanTools / AgentTools coordination with INT-349
+HumanTools / AgentTools coordination with the SDK
 -------------------------------------------------
-The SDK's `HumanTools` class lands in Phase 1 (INT-349) in `thenvoi-sdk-python`
-and is not yet available in this environment (the repo depends on
-`band-client-rest`, which is the Fern-generated REST client only).
-`get_human_tools()` / `get_agent_tools()` import `HumanTools` / `AgentTools`
-lazily and guard the import: if either import fails, the helper logs a WARN
-and returns `None`. Phase 3 (INT-351) is responsible for the registrar that
-calls these helpers; until INT-349 is merged and the SDK is installed, the
-helpers will fail closed with a structured log line rather than an import-time
-crash. This keeps Phase 2 mergeable without waiting for Phase 1.
+The SDK's `HumanTools` and `AgentTools` classes live in `band-sdk-python`.
+`get_human_tools()` / `get_agent_tools()` use startup-validated SDK classes;
+missing SDK imports raise `ConfigError` because the SDK is a hard dependency.
 """
 
 from __future__ import annotations
 
-import json
+import asyncio
 import logging
 import sys
+from collections import OrderedDict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
 from mcp.server.transport_security import TransportSecuritySettings
-from band_rest import AsyncRestClient, RestClient
+from band_rest import AsyncRestClient
 
 from band_mcp.config import (
     Config,
@@ -51,36 +43,26 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+AGENT_TOOLS_CACHE_MAX_SIZE = 128
+AGENT_TOOLS_LOCK_STRIPES = 64
+
 
 @dataclass
 class AppContext:
     """Type-safe container for application dependencies.
 
-    `client` is the legacy single sync `RestClient` used by the handwritten
-    `tools/agent/*` and `tools/human/*` handlers. It is always populated
-    during the transition and goes away in Phase 4 (INT-352) once those
-    handlers are deleted.
-
-    `human_rest` / `agent_rest` are the new async clients used by Phase 3's
-    registrar. They may be None when the corresponding scope is not served by
-    the current config (e.g. a human-only deployment has no `agent_rest`).
+    `human_rest` / `agent_rest` are async REST clients used by the registrar.
+    Either may be None when the corresponding scope is not served by the
+    current config (e.g. a human-only deployment has no `agent_rest`).
 
     `human_tools` is the startup-constructed singleton returned by
-    `get_human_tools()`. `AgentTools` is constructed per-room and cached in a
-    request-scoped ContextVar by `get_agent_tools()`.
+    `get_human_tools()`. `AgentTools` is constructed per-room and cached in
+    `_agent_tools_cache` by `get_agent_tools()`.
 
     `pinned_room_id`, `scope`, and `tools` carry the resolved Config values
-    forward so the registrar (Phase 3) doesn't need to re-resolve.
+    forward so the registrar doesn't need to re-resolve.
     """
 
-    # Legacy single-client path (kept for existing handwritten tools; removed
-    # in Phase 4). Always populated so the existing `@mcp.tool()` handlers
-    # that do `get_app_context(ctx).client.<something>` keep type-checking.
-    # TODO(INT-352): delete AppContext.client once handwritten tools under
-    # tools/agent/* and tools/human/* are removed.
-    client: RestClient
-
-    # Phase 2 additions.
     human_rest: AsyncRestClient | None = None
     agent_rest: AsyncRestClient | None = None
     human_tools: Any = None  # HumanTools | None; typed Any to avoid SDK hard-dep
@@ -88,71 +70,56 @@ class AppContext:
     scope: list[str] = field(default_factory=list)
     tools: list[str] = field(default_factory=list)
 
+    # Lifespan cache for AgentTools keyed by room_id. Room-less agent tools use
+    # None as the cache key. Cached room instances preserve SDK participant
+    # state across sequential MCP tool calls in the same server process.
+    _agent_tools_cache: OrderedDict[str | None, Any] = field(
+        default_factory=OrderedDict
+    )
+
+    # Fixed lock stripes serialize calls that may share a mutable AgentTools
+    # instance without letting caller-controlled room ids grow lock storage.
+    _agent_tools_locks: list[asyncio.Lock] = field(
+        default_factory=lambda: [
+            asyncio.Lock() for _ in range(AGENT_TOOLS_LOCK_STRIPES)
+        ]
+    )
+
 
 AppContextType = Context[ServerSession, AppContext, None]
-_agent_tools_cache_var: ContextVar[dict[str | None, Any] | None] = ContextVar(
-    "band_mcp_agent_tools_cache",
-    default=None,
-)
+
+
+def _require_sdk_tools() -> tuple[Any, Any]:
+    """Import and return ``(HumanTools, AgentTools)`` from the SDK.
+
+    Raises ``ConfigError`` if the SDK package is not importable, so the
+    operator gets a clear startup error instead of a silent empty tool
+    surface. Phase 4 (INT-352) pinned ``band-sdk`` as a hard dependency;
+    a missing import now means the install is broken, not a development-
+    timeline race with INT-349.
+    """
+    try:
+        from band.runtime.tools import AgentTools, HumanTools
+    except ImportError as exc:
+        raise ConfigError(
+            "band-sdk is required but is not importable "
+            "(`from band.runtime.tools import HumanTools, AgentTools` "
+            f"failed: {exc}). Install/upgrade with "
+            "`pip install 'band-sdk>=1.0.0'` or `uv sync`."
+        ) from exc
+    return HumanTools, AgentTools
 
 
 def _try_import_human_tools() -> Any:
-    """Return SDK `HumanTools` class or None if unavailable.
-
-    Guarded to tolerate the Phase 1 (INT-349) SDK landing on a different
-    timeline. When Phase 3 runs and the SDK is installed, this resolves; until
-    then, the registrar sees None and the helper logs a structured warning.
-    """
-    try:
-        from thenvoi.runtime.tools import HumanTools  # type: ignore[import-not-found]
-    except Exception as exc:  # pragma: no cover - import-time guard
-        logger.warning(
-            "HumanTools unavailable (SDK not installed or INT-349 not yet "
-            "merged); human tools will not be constructed: %s",
-            exc,
-        )
-        return None
+    """Return SDK ``HumanTools`` class. Raises ConfigError if unavailable."""
+    HumanTools, _ = _require_sdk_tools()
     return HumanTools
 
 
 def _try_import_agent_tools() -> Any:
-    """Return SDK `AgentTools` class or None if unavailable."""
-    try:
-        from thenvoi.runtime.tools import AgentTools  # type: ignore[import-not-found]
-    except Exception as exc:  # pragma: no cover - import-time guard
-        logger.warning(
-            "AgentTools unavailable (SDK not installed); agent tools will not "
-            "be constructed: %s",
-            exc,
-        )
-        return None
+    """Return SDK ``AgentTools`` class. Raises ConfigError if unavailable."""
+    _, AgentTools = _require_sdk_tools()
     return AgentTools
-
-
-def _choose_legacy_client_credential(
-    config: Config,
-    *,
-    human_cred: str | None,
-    agent_cred: str | None,
-) -> str | None:
-    """Choose the transitional sync-client key for handwritten handlers.
-
-    Scope-specific credentials must beat a stale ``BAND_API_KEY`` here just
-    as they do in ``resolve_credential_for_scope``. Otherwise startup can log a
-    human-only scope and register human handlers while the legacy ``RestClient``
-    is still bound to an agent key from ``BAND_API_KEY``.
-    """
-    scopes = set(config.scope)
-    if scopes == {"human"}:
-        return human_cred
-    if scopes == {"agent"}:
-        return agent_cred
-
-    legacy_human, legacy_agent = _legacy_key_capabilities(config.legacy_key)
-    if scopes == {"agent", "human"} and legacy_human and legacy_agent:
-        return config.legacy_key
-
-    return human_cred or agent_cred or config.legacy_key
 
 
 def build_app_context(
@@ -166,55 +133,57 @@ def build_app_context(
     never use.
 
     If `config` is None, we fall back to the legacy `BAND_API_KEY` path:
-    the sync `client` is populated from `settings.band_api_key` and the
-    new async slots stay None. This preserves current behavior for any caller
-    that has not yet moved to `resolve_config(...)`.
-
-    `AppContext.client` is always populated during the Phase 2 transition.
-    Phase 4 (INT-352) removes the legacy `client` slot once handwritten tool
-    handlers are deleted.
+    the async slots are populated from the single legacy key only for scopes its
+    prefix can serve. If `settings.band_api_key` is unset, the AppContext is
+    returned with both slots None — tool calls will fail at request time with a
+    structured error.
     """
     base_url = settings.band_base_url
 
     if config is None:
-        # Legacy path: single sync client, no new slots.
-        client = RestClient(
-            api_key=settings.band_api_key,
-            base_url=base_url,
+        # Legacy path with no resolved Config. Build clients only for scopes the
+        # legacy key prefix can serve (e.g. thnv_u_* cannot serve agent calls).
+        legacy_key = settings.band_api_key or ""
+        legacy_human, legacy_agent = _legacy_key_capabilities(legacy_key)
+        human_rest = (
+            AsyncRestClient(api_key=legacy_key, base_url=base_url)
+            if legacy_key and legacy_human
+            else None
         )
-        return AppContext(client=client)
+        agent_rest = (
+            AsyncRestClient(api_key=legacy_key, base_url=base_url)
+            if legacy_key and legacy_agent
+            else None
+        )
+        return AppContext(human_rest=human_rest, agent_rest=agent_rest)
 
     human_rest: AsyncRestClient | None = None
     agent_rest: AsyncRestClient | None = None
 
-    human_cred = resolve_credential_for_scope(config, "human")
-    agent_cred = resolve_credential_for_scope(config, "agent")
+    human_cred = (
+        resolve_credential_for_scope(config, "human")
+        if "human" in config.scope
+        else None
+    )
+    agent_cred = (
+        resolve_credential_for_scope(config, "agent")
+        if "agent" in config.scope
+        else None
+    )
 
     if human_cred is not None:
         human_rest = AsyncRestClient(api_key=human_cred, base_url=base_url)
     if agent_cred is not None:
         agent_rest = AsyncRestClient(api_key=agent_cred, base_url=base_url)
 
-    # Keep the legacy sync client alive during the transition so the existing
-    # `@mcp.tool()` decorated handlers in `tools/agent/*` and `tools/human/*`
-    # continue to work. The key must match the resolved scope rather than a
-    # stale legacy env var; validation should catch empty credentials before this
-    # point. Raise loudly here if a caller bypassed it so the server does not
-    # boot into a delayed 401.
-    legacy_for_client = _choose_legacy_client_credential(
-        config,
-        human_cred=human_cred,
-        agent_cred=agent_cred,
-    )
-    if legacy_for_client is None:
-        raise ConfigError("No API credential available for legacy RestClient")
-    client = RestClient(api_key=legacy_for_client, base_url=base_url)
-
-    # Startup-construct `HumanTools` singleton if the SDK + human client are
-    # both available. AgentTools is per-room and constructed on demand.
+    # Startup-construct `HumanTools` singleton if the human client is
+    # available. AgentTools is per-room and constructed on demand.
+    # `_try_import_human_tools` raises ConfigError if the SDK is missing —
+    # we let that propagate so the operator sees a clear startup failure
+    # instead of a running-but-empty MCP server.
     human_tools_obj: Any = None
-    HumanToolsCls = _try_import_human_tools()
-    if HumanToolsCls is not None and human_rest is not None:
+    if human_rest is not None:
+        HumanToolsCls = _try_import_human_tools()
         try:
             human_tools_obj = HumanToolsCls(rest=human_rest)
         except Exception as exc:  # pragma: no cover - defensive
@@ -222,7 +191,6 @@ def build_app_context(
             human_tools_obj = None
 
     return AppContext(
-        client=client,
         human_rest=human_rest,
         agent_rest=agent_rest,
         human_tools=human_tools_obj,
@@ -263,8 +231,8 @@ def get_app_context(ctx: AppContextType) -> AppContext:
 
     Usage in tools:
         app_ctx = get_app_context(ctx)
-        client = app_ctx.client          # legacy sync path
-        human_rest = app_ctx.human_rest  # new async path (Phase 3)
+        human_rest = app_ctx.human_rest  # async REST client for human scope
+        agent_rest = app_ctx.agent_rest  # async REST client for agent scope
     """
     return ctx.request_context.lifespan_context
 
@@ -276,31 +244,36 @@ def get_human_tools(ctx: AppContextType) -> Any:
     once in `build_app_context` from the human `AsyncRestClient`; there is no
     per-request reconstruction.
 
-    Returns None when the SDK isn't installed (INT-349 not yet merged) or when
-    the deployment has no human credential. The caller is responsible for
-    surfacing that as an actionable error.
+    Returns None when the deployment has no human credential. Missing SDK
+    imports raise ConfigError before the server advertises tools.
     """
     app_ctx = get_app_context(ctx)
     if app_ctx.human_tools is None:
         logger.warning(
-            "get_human_tools(): HumanTools not available. Ensure the Band "
-            "SDK (INT-349) is installed and a human credential is configured."
+            "get_human_tools(): HumanTools not available. Ensure a human "
+            "credential is configured for the human scope."
         )
     return app_ctx.human_tools
 
 
-def get_agent_tools(ctx: AppContextType, room_id: str | None) -> Any:
+def get_agent_tools(
+    ctx: AppContextType,
+    room_id: str | None,
+    *,
+    sdk_room_id: str | None = None,
+) -> Any:
     """Return an `AgentTools` instance scoped to `room_id`.
 
-    Per-request cache: Phase 3 can call this multiple times in the same tool
-    invocation (participant-resolution paths walk back to the room) and must
-    not construct twice. The registrar is responsible for clearing the cache
-    at the start of each request; within a single call, repeated
-    `get_agent_tools(ctx, "r1")` returns the same object. Room-less agent tools
-    pass None through to AgentTools.
+    Lifespan cache: repeated calls for the same room return the same SDK
+    `AgentTools` instance for as long as the MCP server process is alive. This
+    preserves SDK-side participant state across sequential MCP calls. Room-less
+    agent tools use None as the cache key and can pass a string sentinel via
+    `sdk_room_id` to satisfy the SDK constructor contract.
 
-    Returns None when the SDK isn't installed or when no agent credential is
-    configured.
+    Returns None when no agent credential is configured. Raises
+    ``ConfigError`` (via ``_try_import_agent_tools``) when the SDK is not
+    installed — that condition should have been caught at startup but this
+    keeps us honest if a tool is dispatched on a broken install.
     """
     app_ctx = get_app_context(ctx)
     if app_ctx.agent_rest is None:
@@ -310,51 +283,42 @@ def get_agent_tools(ctx: AppContextType, room_id: str | None) -> Any:
         )
         return None
 
-    cache = _agent_tools_cache_var.get()
-    if cache is None:
-        cache = {}
-        _agent_tools_cache_var.set(cache)
-
-    cached = cache.get(room_id)
+    cached = app_ctx._agent_tools_cache.get(room_id)
     if cached is not None:
+        app_ctx._agent_tools_cache.move_to_end(room_id)
         return cached
 
     AgentToolsCls = _try_import_agent_tools()
-    if AgentToolsCls is None:
-        return None
 
     try:
-        instance = AgentToolsCls(room_id=room_id, rest=app_ctx.agent_rest)
+        instance = AgentToolsCls(
+            room_id=room_id if sdk_room_id is None else sdk_room_id,
+            rest=app_ctx.agent_rest,
+        )
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to construct AgentTools for room %s: %s", room_id, exc)
         return None
 
-    cache[room_id] = instance
+    app_ctx._agent_tools_cache[room_id] = instance
+    app_ctx._agent_tools_cache.move_to_end(room_id)
+    while len(app_ctx._agent_tools_cache) > AGENT_TOOLS_CACHE_MAX_SIZE:
+        app_ctx._agent_tools_cache.popitem(last=False)
     return instance
 
 
-def reset_agent_tools_cache(ctx: AppContextType) -> None:
-    """Clear the per-request `AgentTools` cache.
+def discard_agent_tools(
+    ctx: AppContextType, room_id: str | None, instance: Any
+) -> None:
+    """Drop a cached `AgentTools` instance if it is still current."""
+    app_ctx = get_app_context(ctx)
+    if app_ctx._agent_tools_cache.get(room_id) is instance:
+        app_ctx._agent_tools_cache.pop(room_id, None)
 
-    Phase 3's registrar calls this at the start of each tool invocation so the
-    cache's per-request semantics hold.
-    """
-    _agent_tools_cache_var.set({})
 
-
-def serialize_response(result: Any, **kwargs: Any) -> str:
-    """Serialize a Pydantic model response to JSON.
-
-    Args:
-        result: A Pydantic model or any object with model_dump() method.
-        **kwargs: Additional arguments passed to model_dump().
-
-    Returns:
-        JSON string representation of the result.
-    """
-    if hasattr(result, "model_dump") and callable(result.model_dump):
-        return json.dumps(result.model_dump(**kwargs), indent=2, default=str)
-    return json.dumps(result, indent=2, default=str)
+def get_agent_tools_lock(ctx: AppContextType, room_id: str | None) -> asyncio.Lock:
+    """Return the lock stripe protecting a cached `AgentTools` instance."""
+    app_ctx = get_app_context(ctx)
+    return app_ctx._agent_tools_locks[hash(room_id) % len(app_ctx._agent_tools_locks)]
 
 
 transport_security = TransportSecuritySettings(

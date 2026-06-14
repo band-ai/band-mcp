@@ -34,7 +34,6 @@ class _FakeAppCtx:
 
     human_tools: Any = None
     agent_tools_by_room: dict[str, Any] | None = None
-    _cache_reset_count: int = 0
 
     def __post_init__(self) -> None:
         if self.agent_tools_by_room is None:
@@ -61,17 +60,27 @@ def _patch_tool_resolvers(monkeypatch: pytest.MonkeyPatch) -> None:
         app = ctx.request_context.lifespan_context
         return app.human_tools
 
-    def fake_get_agent_tools(ctx: Any, room_id: str) -> Any:
+    def fake_get_agent_tools(
+        ctx: Any,
+        room_id: str | None,
+        *,
+        sdk_room_id: str | None = None,  # noqa: ARG001 - mirrors production helper
+    ) -> Any:
         app = ctx.request_context.lifespan_context
         return app.agent_tools_by_room.get(room_id) or app.agent_tools_by_room.get("*")
 
-    def fake_reset(ctx: Any) -> None:
-        app = ctx.request_context.lifespan_context
-        app._cache_reset_count += 1
+    class NoopAsyncLock:
+        async def __aenter__(self) -> None:
+            return None
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
 
     monkeypatch.setattr(registrar, "get_human_tools", fake_get_human_tools)
     monkeypatch.setattr(registrar, "get_agent_tools", fake_get_agent_tools)
-    monkeypatch.setattr(registrar, "reset_agent_tools_cache", fake_reset)
+    monkeypatch.setattr(
+        registrar, "get_agent_tools_lock", MagicMock(return_value=NoopAsyncLock())
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -205,8 +214,6 @@ async def test_pinned_mode_agent_send_message_dispatches_to_pinned_room() -> Non
     agent_tools.send_message.assert_awaited_once()
     call_kwargs = agent_tools.send_message.await_args.kwargs
     assert "chat_id" not in call_kwargs  # stripped before method call
-    # Reset called once for this invocation.
-    assert app_ctx._cache_reset_count == 1
     # Result serialized to JSON
     assert "ok" in str(result)
 

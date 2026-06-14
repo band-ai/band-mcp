@@ -1,31 +1,8 @@
 """Pytest configuration for integration tests.
 
-Re-exports fixtures from the parent module.
-Credentials are loaded from .env.test automatically.
+The live-API smoke/error/full-workflow tests that lived here (pre-INT-352)
+imported the handwritten handler modules that were deleted in Phase 4.
+Their behavior is now covered by `tests/integration/test_forwarding.py`
+(in-process registrar dispatch) and `tests/runtime/test_human_tools.py` in
+`band-sdk-python` (SDK-level tool tests).
 """
-
-from tests.conftest_integration import (
-    IntegrationContext,
-    api_client,
-    get_api_key,
-    get_base_url,
-    get_test_agent_id,
-    integration_ctx,
-    requires_api,
-    test_chat,
-    test_peer_id,
-    test_settings,
-)
-
-__all__ = [
-    "IntegrationContext",
-    "api_client",
-    "get_api_key",
-    "get_base_url",
-    "get_test_agent_id",
-    "integration_ctx",
-    "requires_api",
-    "test_chat",
-    "test_peer_id",
-    "test_settings",
-]
