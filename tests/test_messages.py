@@ -197,10 +197,12 @@ class TestCreateAgentChatMessage:
         assert parsed["data"]["id"] == "msg-789"
 
     def test_creates_message_with_mentions(self, mock_ctx, mock_agent_api):
-        """Test creating a message using pre-resolved mentions."""
+        """Test creating a message using pre-resolved mentions (UUID ids skip resolution)."""
         chat_id = "chat-123"
         content = "Hello!"
-        mentions = '[{"id": "agent-456", "name": "Weather Agent"}]'
+        mentions = (
+            '[{"id": "11111111-1111-4111-8111-111111111111", "name": "Weather Agent"}]'
+        )
         message = factory.chat_message(id="msg-789", content=content)
         mock_agent_api.create_agent_chat_message.return_value = factory.response(
             message
@@ -219,7 +221,9 @@ class TestCreateAgentChatMessage:
     def test_mentions_takes_precedence_over_recipients(self, mock_ctx, mock_agent_api):
         """Test that mentions takes precedence when both are provided."""
         chat_id = "chat-123"
-        mentions = '[{"id": "agent-456", "name": "Weather Agent"}]'
+        mentions = (
+            '[{"id": "11111111-1111-4111-8111-111111111111", "name": "Weather Agent"}]'
+        )
         message = factory.chat_message(id="msg-789")
         mock_agent_api.create_agent_chat_message.return_value = factory.response(
             message
@@ -315,8 +319,11 @@ class TestCreateAgentChatMessage:
 
         mock_agent_api.create_agent_chat_message.assert_called_once()
 
-    def test_returns_error_on_mentions_missing_key(self, mock_ctx, mock_agent_api):
-        """Test error when mentions JSON is valid but missing required fields."""
+    def test_unresolvable_mention_returns_error(self, mock_ctx, mock_agent_api):
+        """A mention whose id is not a UUID and matches no participant errors clearly."""
+        mock_agent_api.list_agent_chat_participants.return_value = (
+            factory.list_response([factory.chat_participant(name="Existing Agent")])
+        )
         result = create_agent_chat_message(
             mock_ctx,
             chat_id="chat-123",
@@ -324,7 +331,85 @@ class TestCreateAgentChatMessage:
             mentions='[{"id": "agent-456"}]',
         )
         assert "Error" in result
-        assert "Missing required field in mentions" in result
+        assert "Could not resolve mentions" in result
+
+    def test_mentions_accepts_native_list_of_objects(self, mock_ctx, mock_agent_api):
+        """A native Python list of UUID-id objects is accepted without resolution."""
+        message = factory.chat_message(id="msg-789")
+        mock_agent_api.create_agent_chat_message.return_value = factory.response(
+            message
+        )
+
+        result = create_agent_chat_message(
+            mock_ctx,
+            chat_id="chat-123",
+            content="Hello!",
+            mentions=[
+                {"id": "11111111-1111-4111-8111-111111111111", "name": "Weather Agent"}
+            ],
+        )
+
+        mock_agent_api.list_agent_chat_participants.assert_not_called()
+        mock_agent_api.create_agent_chat_message.assert_called_once()
+        assert json.loads(result)["data"]["id"] == "msg-789"
+
+    def test_mentions_accepts_native_list_of_handles(self, mock_ctx, mock_agent_api):
+        """A native list of handle strings is resolved to participant IDs."""
+        participant = factory.chat_participant(id="agent-1", name="Weather Agent")
+        mock_agent_api.list_agent_chat_participants.return_value = (
+            factory.list_response([participant])
+        )
+        message = factory.chat_message(id="msg-789")
+        mock_agent_api.create_agent_chat_message.return_value = factory.response(
+            message
+        )
+
+        create_agent_chat_message(
+            mock_ctx,
+            chat_id="chat-123",
+            content="Hello!",
+            mentions=["Weather Agent"],
+        )
+
+        mock_agent_api.list_agent_chat_participants.assert_called_once_with(
+            chat_id="chat-123"
+        )
+        mentions = mock_agent_api.create_agent_chat_message.call_args.kwargs[
+            "message"
+        ].mentions
+        assert len(mentions) == 1
+        assert mentions[0].id == "agent-1"
+
+    def test_mentions_json_string_list_of_handles(self, mock_ctx, mock_agent_api):
+        """A JSON-encoded list of handle strings resolves without crashing on m['id']."""
+        participant = factory.chat_participant(id="agent-1", name="Weather Agent")
+        mock_agent_api.list_agent_chat_participants.return_value = (
+            factory.list_response([participant])
+        )
+        message = factory.chat_message(id="msg-789")
+        mock_agent_api.create_agent_chat_message.return_value = factory.response(
+            message
+        )
+
+        result = create_agent_chat_message(
+            mock_ctx,
+            chat_id="chat-123",
+            content="Hello!",
+            mentions='["Weather Agent"]',
+        )
+
+        assert json.loads(result)["data"]["id"] == "msg-789"
+
+    def test_mentions_object_not_array_errors(self, mock_ctx, mock_agent_api):
+        """A JSON object (not an array) for mentions returns a clear error, no crash."""
+        result = create_agent_chat_message(
+            mock_ctx,
+            chat_id="chat-123",
+            content="Hello!",
+            mentions='{"id": "x", "name": "y"}',
+        )
+        assert "Error" in result
+        assert "must be a list" in result
 
     def test_returns_error_on_empty_recipients_string(self, mock_ctx, mock_agent_api):
         """Test error when recipients is whitespace/commas only."""
