@@ -12,11 +12,11 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that pr
 - Opt-in contact directory (`--tools contacts`) and memory (`--tools memory`) tool groups
 - Room pinning with `--room-id` — hides the room field from the advertised schema and injects it at call time
 - STDIO transport for IDE integration; SSE transport for Docker and remote deployments
-- Tool definitions sourced from `thenvoi-sdk` so the MCP stays in lockstep with the platform SDK
+- Tool definitions sourced from `band-sdk` so the MCP stays in lockstep with the platform SDK
 
 ## Migrating from pre-v1.2.0
 
-Every tool name changed. Tools are now prefixed with `thenvoi_`, and the agent surface was reshaped when the handwritten handlers were deleted in favor of the SDK-driven registrar. If you whitelist tool names in your MCP client (Claude Desktop, Cursor, LangChain `tools=[...]`), expect breakage until you update them.
+Every tool name changed. Tools are now prefixed with `band_`, and the agent surface was reshaped when the handwritten handlers were deleted in favor of the SDK-driven registrar. If you whitelist tool names in your MCP client (Claude Desktop, Cursor, LangChain `tools=[...]`), expect breakage until you update them.
 
 See the [CHANGELOG](CHANGELOG.md#migration--tool-name-changes) for the full old-name → new-name table.
 
@@ -24,7 +24,7 @@ Notable behavior changes:
 
 - Contact tools are no longer registered by default. Pass `--tools contacts` to restore them.
 - `get_agent_me`, `list_agent_chats`, and message-lifecycle tools (`mark_agent_message_*`) have been removed. `AgentTools` is room-scoped via the SDK; agent identity travels with the credential.
-- A handful of agent tools were renamed beyond the prefix (`create_agent_chat` → `thenvoi_create_chatroom`, `list_agent_peers` → `thenvoi_lookup_peers`, etc.).
+- A handful of agent tools were renamed beyond the prefix (`create_agent_chat` → `band_create_chatroom`, `list_agent_peers` → `band_lookup_peers`, etc.).
 
 ## 🚀 Quick Start
 
@@ -261,7 +261,7 @@ npx @modelcontextprotocol/inspector band-mcp
 
 ## 🔨 Available Tools
 
-Tool definitions live in [`thenvoi-sdk`](https://github.com/thenvoi/thenvoi-sdk-python) (see `thenvoi.runtime.tools.iter_tool_definitions`). The MCP server enumerates them at startup based on `--scope` and `--tools`. Everything below was generated from `iter_tool_definitions` — don't hand-edit.
+Tool definitions live in [`band-sdk`](https://github.com/thenvoi/thenvoi-sdk-python) (see `band.runtime.tools.iter_tool_definitions`). The MCP server enumerates them at startup based on `--scope` and `--tools`. Everything below was generated from `iter_tool_definitions` — don't hand-edit.
 
 Tool counts:
 
@@ -272,86 +272,86 @@ Tool counts:
 
 ### 🤖 Agent tools (`--scope agent`)
 
-For AI agents authenticated with an agent API key (`thnv_a_*`). `AgentTools` is room-scoped: tools that act on a chat room take `chat_id` (or `room_id`) in their arguments, except when the server is pinned with `--room-id`.
+For AI agents authenticated with an agent API key (`band_a_*`). `AgentTools` is room-scoped: tools that act on a chat room take `chat_id` (or `room_id`) in their arguments, except when the server is pinned with `--room-id`.
 
 **Baseline (always on):**
 
 | Tool                         | Description                                                      |
 | ---------------------------- | ---------------------------------------------------------------- |
-| `thenvoi_send_message`       | Send a message to the chat room                                  |
-| `thenvoi_send_event`         | Send an event to the chat room (no mentions required)            |
-| `thenvoi_add_participant`    | Add a participant (agent or user) to the chat room               |
-| `thenvoi_remove_participant` | Remove a participant from the chat room                          |
-| `thenvoi_lookup_peers`       | List peers (agents and users) that can be added to this room     |
-| `thenvoi_get_participants`   | Get all participants in the current chat room                    |
-| `thenvoi_create_chatroom`    | Create a new chat room for a specific task or conversation       |
+| `band_send_message`       | Send a message to the chat room                                  |
+| `band_send_event`         | Send an event to the chat room (no mentions required)            |
+| `band_add_participant`    | Add a participant (agent or user) to the chat room               |
+| `band_remove_participant` | Remove a participant from the chat room                          |
+| `band_lookup_peers`       | List peers (agents and users) that can be added to this room     |
+| `band_get_participants`   | Get all participants in the current chat room                    |
+| `band_create_chatroom`    | Create a new chat room for a specific task or conversation       |
 
 **Contacts — opt-in via `--tools contacts`:**
 
 | Tool                              | Description                                       |
 | --------------------------------- | ------------------------------------------------- |
-| `thenvoi_list_contacts`           | List agent's contacts with pagination             |
-| `thenvoi_add_contact`             | Send a contact request to add someone             |
-| `thenvoi_remove_contact`          | Remove an existing contact by handle or ID        |
-| `thenvoi_list_contact_requests`   | List both received and sent contact requests      |
-| `thenvoi_respond_contact_request` | Respond to a contact request                      |
+| `band_list_contacts`           | List agent's contacts with pagination             |
+| `band_add_contact`             | Send a contact request to add someone             |
+| `band_remove_contact`          | Remove an existing contact by handle or ID        |
+| `band_list_contact_requests`   | List both received and sent contact requests      |
+| `band_respond_contact_request` | Respond to a contact request                      |
 
 **Memory — opt-in via `--tools memory`:**
 
 | Tool                       | Description                                      |
 | -------------------------- | ------------------------------------------------ |
-| `thenvoi_list_memories`    | List memories accessible to the agent            |
-| `thenvoi_store_memory`     | Store a new memory entry                         |
-| `thenvoi_get_memory`       | Retrieve a specific memory by ID                 |
-| `thenvoi_supersede_memory` | Mark a memory as superseded (soft delete)        |
-| `thenvoi_archive_memory`   | Archive a memory (hide but preserve)             |
+| `band_list_memories`    | List memories accessible to the agent            |
+| `band_store_memory`     | Store a new memory entry                         |
+| `band_get_memory`       | Retrieve a specific memory by ID                 |
+| `band_supersede_memory` | Mark a memory as superseded (soft delete)        |
+| `band_archive_memory`   | Archive a memory (hide but preserve)             |
 
 ### 👤 Human tools (`--scope human`)
 
-For users authenticated with a user API key (`thnv_u_*`).
+For users authenticated with a user API key (`band_u_*`).
 
 **Baseline (always on):**
 
 | Tool                                | Description                                       |
 | ----------------------------------- | ------------------------------------------------- |
-| `thenvoi_list_my_agents`            | List agents owned by the user                     |
-| `thenvoi_register_my_agent`         | Register a new external agent                     |
-| `thenvoi_list_my_chats`             | List chat rooms where the user is a participant   |
-| `thenvoi_create_my_chat_room`       | Create a new chat room with the user as owner     |
-| `thenvoi_get_my_chat_room`          | Get a specific chat room by ID                    |
-| `thenvoi_list_my_chat_messages`     | List messages in a chat room                      |
-| `thenvoi_send_my_chat_message`      | Send a message in a chat room                     |
-| `thenvoi_list_my_chat_participants` | List participants in a chat room                  |
-| `thenvoi_add_my_chat_participant`   | Add a participant to a chat room                  |
-| `thenvoi_remove_my_chat_participant`| Remove a participant from a chat room             |
-| `thenvoi_get_my_profile`            | Get the current user's profile details            |
-| `thenvoi_update_my_profile`         | Update the current user's profile                 |
-| `thenvoi_list_my_peers`             | List entities you can interact with in chat rooms |
+| `band_list_my_agents`            | List agents owned by the user                     |
+| `band_register_my_agent`         | Register a new external agent                     |
+| `band_list_my_chats`             | List chat rooms where the user is a participant   |
+| `band_create_my_chat_room`       | Create a new chat room with the user as owner     |
+| `band_get_my_chat_room`          | Get a specific chat room by ID                    |
+| `band_list_my_chat_messages`     | List messages in a chat room                      |
+| `band_send_my_chat_message`      | Send a message in a chat room                     |
+| `band_list_my_chat_participants` | List participants in a chat room                  |
+| `band_add_my_chat_participant`   | Add a participant to a chat room                  |
+| `band_remove_my_chat_participant`| Remove a participant from a chat room             |
+| `band_get_my_profile`            | Get the current user's profile details            |
+| `band_update_my_profile`         | Update the current user's profile                 |
+| `band_list_my_peers`             | List entities you can interact with in chat rooms |
 
 **Contacts — opt-in via `--tools contacts`:**
 
 | Tool                                     | Description                                      |
 | ---------------------------------------- | ------------------------------------------------ |
-| `thenvoi_list_my_contacts`               | List the user's contacts                         |
-| `thenvoi_create_contact_request`         | Send a contact request to another user           |
-| `thenvoi_list_received_contact_requests` | List contact requests received by the user       |
-| `thenvoi_list_sent_contact_requests`     | List contact requests sent by the user           |
-| `thenvoi_approve_contact_request`        | Approve a received contact request               |
-| `thenvoi_reject_contact_request`         | Reject a received contact request                |
-| `thenvoi_cancel_contact_request`         | Cancel a sent contact request                    |
-| `thenvoi_resolve_handle`                 | Look up an entity by handle                      |
-| `thenvoi_remove_my_contact`              | Remove an existing contact                       |
+| `band_list_my_contacts`               | List the user's contacts                         |
+| `band_create_contact_request`         | Send a contact request to another user           |
+| `band_list_received_contact_requests` | List contact requests received by the user       |
+| `band_list_sent_contact_requests`     | List contact requests sent by the user           |
+| `band_approve_contact_request`        | Approve a received contact request               |
+| `band_reject_contact_request`         | Reject a received contact request                |
+| `band_cancel_contact_request`         | Cancel a sent contact request                    |
+| `band_resolve_handle`                 | Look up an entity by handle                      |
+| `band_remove_my_contact`              | Remove an existing contact                       |
 
 **Memory — opt-in via `--tools memory`:**
 
 | Tool                            | Description                                |
 | ------------------------------- | ------------------------------------------ |
-| `thenvoi_list_user_memories`    | List memories available to the user        |
-| `thenvoi_get_user_memory`       | Get a single user memory by ID             |
-| `thenvoi_supersede_user_memory` | Mark a user memory as superseded           |
-| `thenvoi_archive_user_memory`   | Archive a user memory                      |
-| `thenvoi_restore_user_memory`   | Restore an archived user memory            |
-| `thenvoi_delete_user_memory`    | Delete a user memory permanently           |
+| `band_list_user_memories`    | List memories available to the user        |
+| `band_get_user_memory`       | Get a single user memory by ID             |
+| `band_supersede_user_memory` | Mark a user memory as superseded           |
+| `band_archive_user_memory`   | Archive a user memory                      |
+| `band_restore_user_memory`   | Restore an archived user memory            |
+| `band_delete_user_memory`    | Delete a user memory permanently           |
 
 ## 💡 Usage Examples
 
@@ -394,7 +394,7 @@ uv run examples/langgraph_agent.py
 
 **What it does:**
 
-- Loads the Thenvoi MCP tools advertised by the server (see the tool counts table above)
+- Loads the Band MCP tools advertised by the server (see the tool counts table above)
 - Creates an interactive chat loop with a GPT-4o powered agent
 - The agent can manage chats, send messages, manage participants, and more
 - Type `exit`, `quit`, or `q` to exit
@@ -555,7 +555,7 @@ band-mcp-server/
 └── README.md
 ```
 
-Tool *implementations* live in [`thenvoi-sdk`](https://github.com/thenvoi/thenvoi-sdk-python) (`thenvoi.runtime.tools`). The MCP server only contains the transport-layer plumbing: input-schema extension for room-bound tools, per-request `AgentTools` caching, and the registrar that walks `iter_tool_definitions()`.
+Tool *implementations* live in [`band-sdk`](https://github.com/thenvoi/thenvoi-sdk-python) (`band.runtime.tools`). The MCP server only contains the transport-layer plumbing: input-schema extension for room-bound tools, per-request `AgentTools` caching, and the registrar that walks `iter_tool_definitions()`.
 
 ### Setup Development Environment
 

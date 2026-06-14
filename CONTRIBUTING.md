@@ -38,10 +38,10 @@ Thank you for your interest in contributing to Band MCP! This document provides 
 
 ## Development Workflow
 
-1. Create a feature branch from `develop`:
+1. Create a feature branch from `dev`:
    ```bash
-   git checkout develop
-   git pull upstream develop
+   git checkout dev
+   git pull upstream dev
    git checkout -b feat/your-feature-name
    # or fix/your-bug-fix for bug fixes
    ```
@@ -69,7 +69,7 @@ Thank you for your interest in contributing to Band MCP! This document provides 
    git commit -m "fix: resolve issue description"
    ```
 
-6. Push and create a pull request to `develop`
+6. Push and create a pull request to `dev`
 
 ## Code Standards
 
@@ -111,13 +111,13 @@ logger.error("Failed to connect", exc_info=True)
 
 ### Writing Platform Tools
 
-Platform tools are defined in `thenvoi-sdk` and registered through `thenvoi_mcp.tools.registrar.register_tools`. Do not add new handwritten per-tool handlers under this repo's `tools/agent/` or `tools/human/` packages; update the SDK tool definition and method implementation instead.
+Platform tools are defined in `band-sdk` and registered through `band_mcp.tools.registrar.register_tools`. Do not add new handwritten per-tool handlers under this repo's `tools/agent/` or `tools/human/` packages; update the SDK tool definition and method implementation instead.
 
 Use a handwritten `@mcp.tool()` only for server diagnostics that are not SDK platform tools. `health_check` is the current example.
 
 Key requirements:
-- Keep SDK platform tool names and schemas sourced from `thenvoi.runtime.tools.iter_tool_definitions`
-- Keep MCP transport-only behavior, such as pinned room injection, in `thenvoi_mcp.tools.registrar`
+- Keep SDK platform tool names and schemas sourced from `band.runtime.tools.iter_tool_definitions`
+- Keep MCP transport-only behavior, such as pinned room injection, in `band_mcp.tools.registrar`
 - Use `AppContext.human_rest`, `AppContext.agent_rest`, or the shared SDK tool helpers instead of the removed `AppContext.client` slot
 - Return strings (success messages or JSON)
 - Include descriptive docs on any handwritten diagnostic tool

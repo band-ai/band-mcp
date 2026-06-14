@@ -16,13 +16,13 @@ MCP (Model Context Protocol) server that connects AI assistants to the Band plat
 
 ## Tool Registration
 
-MCP platform tools are registered through `thenvoi_mcp.tools.registrar.register_tools`, which consumes `thenvoi.runtime.tools.iter_tool_definitions` from the SDK. Do not add handwritten per-tool handlers under `tools/agent/` or `tools/human/`; add or update the SDK tool definition instead, then adapt the registrar only when MCP transport behavior differs from the SDK method contract.
+MCP platform tools are registered through `band_mcp.tools.registrar.register_tools`, which consumes `band.runtime.tools.iter_tool_definitions` from the SDK. Do not add handwritten per-tool handlers under `tools/agent/` or `tools/human/`; add or update the SDK tool definition instead, then adapt the registrar only when MCP transport behavior differs from the SDK method contract.
 
 The only handwritten MCP tool in this repo is `health_check`, which is a server diagnostic rather than a platform SDK tool.
 
 ## Repo-Specific Conventions
 
-- Use the shared logger: `from thenvoi_mcp.shared import logger`
+- Use the shared logger: `from band_mcp.shared import logger`
 - Platform tools must come from the SDK-driven registrar, not `@mcp.tool()` decorators
 - Runtime dependencies live on `AppContext` as `human_rest`, `agent_rest`, and `human_tools`; agent tools are constructed with `get_agent_tools(ctx, room_id)`
 - Tools must return strings (success messages or JSON)
