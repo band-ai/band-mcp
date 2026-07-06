@@ -24,6 +24,7 @@ import difflib
 from dataclasses import dataclass, field
 from typing import Literal, Mapping, Sequence, cast
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Scope = Literal["agent", "human"]
@@ -102,7 +103,14 @@ class Settings(BaseSettings):
 
     # API configuration
     thenvoi_api_key: str = ""
-    thenvoi_base_url: str = "https://app.thenvoi.com"
+    # BAND_* aliases cover the Band rebrand; THENVOI_BASE_URL keeps
+    # precedence (first match wins) for existing deployments.
+    thenvoi_base_url: str = Field(
+        default="https://app.thenvoi.com",
+        validation_alias=AliasChoices(
+            "THENVOI_BASE_URL", "BAND_BASE_URL", "BAND_REST_URL"
+        ),
+    )
 
     # Transport configuration
     transport: Literal["stdio", "sse"] = "stdio"

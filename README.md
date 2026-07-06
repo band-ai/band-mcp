@@ -439,7 +439,7 @@ WARN  unknown --scope value 'huamn' — did you mean 'human'? ignoring.
 | `THENVOI_MCP_TOOLS` / `BAND_MCP_TOOLS`         | Opt-in tool groups: `contacts`, `memory`          |
 | `THENVOI_MCP_ROOM_ID` / `BAND_MCP_ROOM_ID`     | Pinned room id (optional)                         |
 | `THENVOI_API_KEY`                              | Legacy single-key path — **still supported**      |
-| `THENVOI_BASE_URL`                             | API base URL (default: `https://app.thenvoi.com`) |
+| `THENVOI_BASE_URL` / `BAND_BASE_URL` / `BAND_REST_URL` | API base URL (default: `https://app.thenvoi.com`); `THENVOI_BASE_URL` wins when several are set |
 | `TRANSPORT`                                    | `stdio` (default) or `sse`                        |
 | `HOST` / `PORT`                                | SSE bind host/port                                |
 

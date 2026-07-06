@@ -489,3 +489,25 @@ def test_legacy_ignored_warning_value_field():
     warn = next(w for w in cfg.warnings if w.kind == "legacy-key-ignored")
     assert warn.value == "legacy_key"
     assert warn.did_you_mean is None
+
+
+# ---------------------------------------------------------------------------
+# Base URL env aliases (Band rebrand)
+# ---------------------------------------------------------------------------
+
+
+def test_base_url_band_aliases(monkeypatch: pytest.MonkeyPatch) -> None:
+    """BAND_BASE_URL / BAND_REST_URL are read; THENVOI_BASE_URL keeps precedence."""
+    from thenvoi_mcp.config import Settings
+
+    for var in ("THENVOI_BASE_URL", "BAND_BASE_URL", "BAND_REST_URL"):
+        monkeypatch.delenv(var, raising=False)
+
+    monkeypatch.setenv("BAND_BASE_URL", "https://band-base.example")
+    assert Settings().thenvoi_base_url == "https://band-base.example"
+
+    monkeypatch.setenv("BAND_REST_URL", "https://band-rest.example")
+    assert Settings().thenvoi_base_url == "https://band-base.example"  # BASE wins
+
+    monkeypatch.setenv("THENVOI_BASE_URL", "https://thenvoi.example")
+    assert Settings().thenvoi_base_url == "https://thenvoi.example"  # legacy wins

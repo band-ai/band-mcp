@@ -163,7 +163,8 @@ Environment Variables:
   THENVOI_MCP_TOOLS / BAND_MCP_TOOLS    Opt-in tool groups: contacts, memory
   THENVOI_MCP_ROOM_ID / BAND_MCP_ROOM_ID  Optional pinned room id
   THENVOI_API_KEY       Legacy single-key path (still supported as fallback)
-  THENVOI_BASE_URL      Base URL for Thenvoi API (default: https://app.thenvoi.com)
+  THENVOI_BASE_URL / BAND_BASE_URL / BAND_REST_URL
+                        API base URL (default: https://app.thenvoi.com)
   TRANSPORT             Transport mode: stdio or sse (default: stdio)
   HOST                  Host to bind for SSE mode (default: 127.0.0.1)
   PORT                  Port to bind for SSE mode (default: 8000)
