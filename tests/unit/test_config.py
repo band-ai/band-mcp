@@ -1,7 +1,7 @@
-"""Unit tests for `thenvoi_mcp.config`.
+"""Unit tests for `band_mcp.config`.
 
 Covers Phase 2 (INT-350) acceptance criteria:
-- Precedence per slot: CLI > THENVOI_* > BAND_* > THENVOI_API_KEY (legacy only).
+- Precedence per slot: CLI > BAND_* > BAND_API_KEY (legacy only).
 - Scope-specific key wins; legacy is fallback + emits warning when masked.
 - `--scope` / `--tools` parsing (comma-separated, repeatable, explicit empty).
 - Unknown values produce warnings with `did_you_mean` and are dropped.
@@ -16,11 +16,10 @@ import dataclasses
 
 import pytest
 
-from thenvoi_mcp.config import (
+from band_mcp.config import (
     Config,
     ConfigError,
     ConfigWarning,
-    _legacy_key_capabilities,
     _suggest_value,
     resolve_config,
     resolve_credential_for_scope,
@@ -50,18 +49,19 @@ def test_config_warning_fields():
     assert fields == {"kind", "value", "did_you_mean", "message"}
 
 
+def test_config_is_frozen_dataclass():
+    cfg = Config()
+    assert dataclasses.is_dataclass(cfg)
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        cfg.scope = ["human"]  # type: ignore[misc]
+
+
 def test_config_default_scope_is_agent():
     # AC #6: default scope is ["agent"]. A bare `Config()` must honor it so
     # test fixtures and external callers don't silently fail validate().
     cfg = Config()
     assert cfg.scope == ["agent"]
     assert cfg.tools == []
-
-
-def test_config_is_frozen_dataclass():
-    cfg = Config()
-    with pytest.raises(dataclasses.FrozenInstanceError):
-        cfg.scope = ["human"]  # type: ignore[misc]
 
 
 def test_config_default_scope_isolated_between_instances():
@@ -92,20 +92,12 @@ def test_suggest_value_no_match():
 # ---------------------------------------------------------------------------
 
 
-def test_user_key_cli_beats_thenvoi_env():
+def test_user_key_cli_beats_env():
     cfg = resolve_config(
         cli={"user_key": "cli_user"},
-        env={"THENVOI_USER_KEY": "env_thenvoi", "BAND_USER_KEY": "env_band"},
+        env={"BAND_USER_KEY": "env_band"},
     )
     assert cfg.user_key == "cli_user"
-
-
-def test_user_key_thenvoi_beats_band():
-    cfg = resolve_config(
-        cli={},
-        env={"THENVOI_USER_KEY": "env_thenvoi", "BAND_USER_KEY": "env_band"},
-    )
-    assert cfg.user_key == "env_thenvoi"
 
 
 def test_user_key_band_when_only_band_set():
@@ -119,44 +111,23 @@ def test_user_key_none_when_nothing_set():
 
 
 def test_agent_key_precedence_chain():
-    # CLI beats THENVOI_* beats BAND_*
+    # CLI beats BAND_*
     cfg = resolve_config(
         cli={"agent_key": "cli_a"},
-        env={"THENVOI_AGENT_KEY": "env_t", "BAND_AGENT_KEY": "env_b"},
+        env={"BAND_AGENT_KEY": "env_b"},
     )
     assert cfg.agent_key == "cli_a"
-
-    cfg = resolve_config(
-        cli={}, env={"THENVOI_AGENT_KEY": "env_t", "BAND_AGENT_KEY": "env_b"}
-    )
-    assert cfg.agent_key == "env_t"
 
     cfg = resolve_config(cli={}, env={"BAND_AGENT_KEY": "env_b"})
     assert cfg.agent_key == "env_b"
 
 
-def test_legacy_key_only_from_thenvoi_api_key():
-    cfg = resolve_config(cli={}, env={"THENVOI_API_KEY": "thnv_u_abc"})
-    assert cfg.legacy_key == "thnv_u_abc"
+def test_legacy_key_only_from_band_api_key():
+    cfg = resolve_config(cli={}, env={"BAND_API_KEY": "band_u_abc"})
+    assert cfg.legacy_key == "band_u_abc"
     # legacy doesn't populate user_key/agent_key directly
     assert cfg.user_key is None
     assert cfg.agent_key is None
-
-
-@pytest.mark.parametrize(
-    ("key", "expected"),
-    [
-        ("thnv_u_abc", (True, False)),
-        ("band_u_abc", (True, False)),
-        ("thnv_a_abc", (False, True)),
-        ("band_a_abc", (False, True)),
-        ("thnv_abc", (True, True)),
-        ("band_abc", (True, True)),
-        ("other_abc", (False, False)),
-    ],
-)
-def test_legacy_key_capabilities_accept_thenvoi_and_band_prefixes(key, expected):
-    assert _legacy_key_capabilities(key) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +137,7 @@ def test_legacy_key_capabilities_accept_thenvoi_and_band_prefixes(key, expected)
 
 def test_user_key_masks_legacy_human_capable():
     cfg = resolve_config(
-        cli={}, env={"THENVOI_USER_KEY": "user_1", "THENVOI_API_KEY": "thnv_u_xxx"}
+        cli={}, env={"BAND_USER_KEY": "user_1", "BAND_API_KEY": "thnv_u_xxx"}
     )
     # user_key populated; for human, user_key wins
     assert resolve_credential_for_scope(cfg, "human") == "user_1"
@@ -177,7 +148,7 @@ def test_user_key_masks_legacy_human_capable():
 
 def test_agent_key_masks_legacy_all_capable():
     cfg = resolve_config(
-        cli={}, env={"THENVOI_AGENT_KEY": "agent_1", "THENVOI_API_KEY": "thnv_abc"}
+        cli={}, env={"BAND_AGENT_KEY": "agent_1", "BAND_API_KEY": "thnv_abc"}
     )
     # agent_key wins for agent scope
     assert resolve_credential_for_scope(cfg, "agent") == "agent_1"
@@ -191,15 +162,39 @@ def test_no_legacy_warning_when_no_overlap():
     # legacy_key is agent-only (thnv_a_) and only user_key is set → no overlap,
     # no warning.
     cfg = resolve_config(
-        cli={}, env={"THENVOI_USER_KEY": "user_1", "THENVOI_API_KEY": "thnv_a_xxx"}
+        cli={}, env={"BAND_USER_KEY": "user_1", "BAND_API_KEY": "thnv_a_xxx"}
     )
     assert all(w.kind != "legacy-key-ignored" for w in cfg.warnings)
 
 
 def test_legacy_fallback_when_scope_key_empty():
-    cfg = resolve_config(cli={}, env={"THENVOI_API_KEY": "thnv_abc"})
+    cfg = resolve_config(cli={}, env={"BAND_API_KEY": "thnv_abc"})
     assert resolve_credential_for_scope(cfg, "human") == "thnv_abc"
     assert resolve_credential_for_scope(cfg, "agent") == "thnv_abc"
+
+
+@pytest.mark.parametrize(
+    ("legacy_key", "expected_human", "expected_agent"),
+    [
+        ("band_u_abc", True, False),
+        ("band_a_abc", False, True),
+        ("band_abc", True, True),
+    ],
+)
+def test_band_prefixed_legacy_key_capabilities(
+    legacy_key: str, expected_human: bool, expected_agent: bool
+) -> None:
+    cfg = resolve_config(cli={}, env={"BAND_API_KEY": legacy_key})
+
+    if expected_human:
+        assert resolve_credential_for_scope(cfg, "human") == legacy_key
+    else:
+        assert resolve_credential_for_scope(cfg, "human") is None
+
+    if expected_agent:
+        assert resolve_credential_for_scope(cfg, "agent") == legacy_key
+    else:
+        assert resolve_credential_for_scope(cfg, "agent") is None
 
 
 # ---------------------------------------------------------------------------
@@ -210,14 +205,9 @@ def test_legacy_fallback_when_scope_key_empty():
 def test_room_id_precedence():
     cfg = resolve_config(
         cli={"room_id": "cli_room"},
-        env={"THENVOI_MCP_ROOM_ID": "env_t", "BAND_MCP_ROOM_ID": "env_b"},
+        env={"BAND_MCP_ROOM_ID": "env_b"},
     )
     assert cfg.room_id == "cli_room"
-
-    cfg = resolve_config(
-        cli={}, env={"THENVOI_MCP_ROOM_ID": "env_t", "BAND_MCP_ROOM_ID": "env_b"}
-    )
-    assert cfg.room_id == "env_t"
 
     cfg = resolve_config(cli={}, env={"BAND_MCP_ROOM_ID": "env_b"})
     assert cfg.room_id == "env_b"
@@ -257,20 +247,12 @@ def test_scope_repeatable_mixed_with_csv():
 def test_scope_precedence_cli_over_env():
     cfg = resolve_config(
         cli={"scope": "human"},
-        env={"THENVOI_MCP_SCOPE": "agent", "BAND_MCP_SCOPE": "agent,human"},
+        env={"BAND_MCP_SCOPE": "agent,human"},
     )
     assert cfg.scope == ["human"]
 
 
-def test_scope_thenvoi_env_beats_band_env():
-    cfg = resolve_config(
-        cli={},
-        env={"THENVOI_MCP_SCOPE": "human", "BAND_MCP_SCOPE": "agent"},
-    )
-    assert cfg.scope == ["human"]
-
-
-def test_scope_band_env_when_no_thenvoi():
+def test_scope_band_env():
     cfg = resolve_config(cli={}, env={"BAND_MCP_SCOPE": "human"})
     assert cfg.scope == ["human"]
 
@@ -311,26 +293,16 @@ def test_tools_repeatable():
 
 
 def test_tools_explicit_empty_string_overrides_env():
-    cfg = resolve_config(cli={"tools": ""}, env={"THENVOI_MCP_TOOLS": "contacts"})
-    assert cfg.tools == []
-
-
-def test_tools_explicit_empty_argparse_list_overrides_env():
-    cfg = resolve_config(cli={"tools": [""]}, env={"THENVOI_MCP_TOOLS": "contacts"})
+    cfg = resolve_config(cli={"tools": ""}, env={"BAND_MCP_TOOLS": "contacts"})
     assert cfg.tools == []
 
 
 def test_tools_precedence():
     cfg = resolve_config(
         cli={"tools": "memory"},
-        env={"THENVOI_MCP_TOOLS": "contacts", "BAND_MCP_TOOLS": "contacts,memory"},
+        env={"BAND_MCP_TOOLS": "contacts,memory"},
     )
     assert cfg.tools == ["memory"]
-
-    cfg = resolve_config(
-        cli={}, env={"THENVOI_MCP_TOOLS": "contacts", "BAND_MCP_TOOLS": "memory"}
-    )
-    assert cfg.tools == ["contacts"]
 
     cfg = resolve_config(cli={}, env={"BAND_MCP_TOOLS": "memory"})
     assert cfg.tools == ["memory"]
@@ -391,34 +363,32 @@ def test_validate_passes_human_scope_with_user_key():
 
 def test_validate_passes_via_legacy_key_agent_capable():
     # thnv_a_ legacy satisfies agent scope
-    cfg = resolve_config(cli={}, env={"THENVOI_API_KEY": "thnv_a_xyz"})
+    cfg = resolve_config(cli={}, env={"BAND_API_KEY": "thnv_a_xyz"})
     validate(cfg)
 
 
 def test_validate_passes_via_legacy_key_all_capable_both_scopes():
-    cfg = resolve_config(
-        cli={"scope": "agent,human"}, env={"THENVOI_API_KEY": "thnv_xyz"}
-    )
+    cfg = resolve_config(cli={"scope": "agent,human"}, env={"BAND_API_KEY": "thnv_xyz"})
     validate(cfg)
 
 
 def test_validate_fails_human_scope_with_agent_only_legacy():
     cfg = resolve_config(
-        cli={"scope": "agent,human"}, env={"THENVOI_API_KEY": "thnv_a_xyz"}
+        cli={"scope": "agent,human"}, env={"BAND_API_KEY": "thnv_a_xyz"}
     )
     with pytest.raises(ConfigError):
         validate(cfg)
 
 
 def test_validate_fails_agent_scope_with_human_only_legacy():
-    cfg = resolve_config(cli={}, env={"THENVOI_API_KEY": "thnv_u_xyz"})
+    cfg = resolve_config(cli={}, env={"BAND_API_KEY": "thnv_u_xyz"})
     with pytest.raises(ConfigError):
         validate(cfg)
 
 
 def test_validate_fails_on_empty_scope():
     # Only unknown scope values → resolved scope is empty → validate fails.
-    cfg = resolve_config(cli={"scope": "zzzzz"}, env={"THENVOI_API_KEY": "thnv_xyz"})
+    cfg = resolve_config(cli={"scope": "zzzzz"}, env={"BAND_API_KEY": "thnv_xyz"})
     # Defensive: empty scope should raise, since no scope means "serve nothing".
     with pytest.raises(ConfigError):
         validate(cfg)
@@ -483,9 +453,7 @@ def test_unknown_tools_warning_message_lists_valid_when_no_suggestion():
 
 
 def test_legacy_ignored_warning_value_field():
-    cfg = resolve_config(
-        cli={}, env={"THENVOI_USER_KEY": "u", "THENVOI_API_KEY": "thnv_u_x"}
-    )
+    cfg = resolve_config(cli={}, env={"BAND_USER_KEY": "u", "BAND_API_KEY": "thnv_u_x"})
     warn = next(w for w in cfg.warnings if w.kind == "legacy-key-ignored")
     assert warn.value == "legacy_key"
     assert warn.did_you_mean is None

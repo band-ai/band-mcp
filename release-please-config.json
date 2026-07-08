@@ -3,12 +3,12 @@
   "release-type": "python",
   "packages": {
     ".": {
-      "package-name": "thenvoi-mcp",
+      "package-name": "band-mcp",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,
       "extra-files": [
-        "src/thenvoi_mcp/__init__.py"
+        "src/band_mcp/__init__.py"
       ]
     }
   },
