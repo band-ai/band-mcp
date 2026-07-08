@@ -1,6 +1,6 @@
-# Contributing to Thenvoi MCP
+# Contributing to Band MCP
 
-Thank you for your interest in contributing to Thenvoi MCP! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to Band MCP! This document provides guidelines and instructions for contributing.
 
 ## Development Setup
 
@@ -38,10 +38,10 @@ Thank you for your interest in contributing to Thenvoi MCP! This document provid
 
 ## Development Workflow
 
-1. Create a feature branch from `develop`:
+1. Create a feature branch from `dev`:
    ```bash
-   git checkout develop
-   git pull upstream develop
+   git checkout dev
+   git pull upstream dev
    git checkout -b feat/your-feature-name
    # or fix/your-bug-fix for bug fixes
    ```
@@ -53,7 +53,7 @@ Thank you for your interest in contributing to Thenvoi MCP! This document provid
    # Unit tests
    uv run pytest tests/ --ignore=tests/integration/ -v
 
-   # Integration tests (requires THENVOI_API_KEY)
+   # Integration tests (requires BAND_API_KEY)
    uv run pytest tests/integration/ -v -s --no-cov
    ```
 
@@ -69,7 +69,7 @@ Thank you for your interest in contributing to Thenvoi MCP! This document provid
    git commit -m "fix: resolve issue description"
    ```
 
-6. Push and create a pull request to `develop`
+6. Push and create a pull request to `dev`
 
 ## Code Standards
 
@@ -103,43 +103,32 @@ All formatting is enforced via pre-commit hooks.
 
 Never use `print()` statements. Always use the shared logger:
 ```python
-from thenvoi_mcp.shared import logger
+from band_mcp.shared import logger
 
 logger.info("Processing request")
 logger.error("Failed to connect", exc_info=True)
 ```
 
-### Writing Tools
+### Writing Platform Tools
 
-All MCP tools must follow this pattern:
-```python
-from thenvoi_mcp.shared import mcp, get_app_context, AppContextType
+Platform tools are defined in `band-sdk` and registered through `band_mcp.tools.registrar.register_tools`. Do not add new handwritten per-tool handlers under this repo's `tools/agent/` or `tools/human/` packages; update the SDK tool definition and method implementation instead.
 
-@mcp.tool()
-def my_tool(ctx: AppContextType, param: str) -> str:
-    """Tool description for AI assistants.
-
-    Provide a clear description of what the tool does,
-    as this will be shown to AI assistants.
-    """
-    client = get_app_context(ctx).client
-    # Use client.human_api.* or client.agent_api.*
-    return "Success message or JSON string"
-```
+Use a handwritten `@mcp.tool()` only for server diagnostics that are not SDK platform tools. `health_check` is the current example.
 
 Key requirements:
-- Use `@mcp.tool()` decorator
-- First parameter must be `ctx: AppContextType`
-- Return type must be `str`
-- Include a descriptive docstring
+- Keep SDK platform tool names and schemas sourced from `band.runtime.tools.iter_tool_definitions`
+- Keep MCP transport-only behavior, such as pinned room injection, in `band_mcp.tools.registrar`
+- Use `AppContext.human_rest`, `AppContext.agent_rest`, or the shared SDK tool helpers instead of the removed `AppContext.client` slot
+- Return strings (success messages or JSON)
+- Include descriptive docs on any handwritten diagnostic tool
 
 ### Imports
 
-Use absolute imports from `thenvoi_mcp`:
+Use absolute imports from `band_mcp`:
 ```python
 # Good
-from thenvoi_mcp.shared import mcp, logger
-from thenvoi_mcp.config import Settings
+from band_mcp.shared import mcp, logger
+from band_mcp.config import Settings
 
 # Avoid
 from .shared import mcp
@@ -163,7 +152,7 @@ uv run pytest tests/integration/ -v -s --no-cov
 
 ### Writing Tests
 
-This project uses the shared `thenvoi-testing-python` package for test fixtures and utilities.
+This project uses the shared `band-testing-python` package for test fixtures and utilities.
 
 **Unit Tests:**
 - Place in `tests/`
@@ -194,7 +183,7 @@ def test_my_tool(mock_ctx, mock_agent_api):
 
 **Integration Tests:**
 - Place in `tests/integration/`
-- Require `THENVOI_API_KEY` environment variable (set in `.env.test`)
+- Require `BAND_API_KEY` environment variable (set in `.env.test`)
 - Use `@requires_api` decorator to skip if API key is not set
 
 ## Pull Request Guidelines

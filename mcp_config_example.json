@@ -1,25 +1,25 @@
 {
   "mcpServers": {
-    "thenvoi": {
-      "command": "thenvoi-mcp",
+    "band": {
+      "command": "band-mcp",
       "args": [
         "--scope",
-        "agent",
+        "agent,human",
         "--tools",
         "contacts"
       ],
       "env": {
-        "THENVOI_AGENT_KEY": "thnv_a_your_agent_key",
-        "THENVOI_USER_KEY": "thnv_u_your_user_key",
-        "THENVOI_BASE_URL": "https://app.thenvoi.com"
+        "BAND_AGENT_KEY": "band_a_your_agent_key",
+        "BAND_USER_KEY": "band_u_your_user_key",
+        "BAND_BASE_URL": "https://app.band.ai"
       }
     },
-    "thenvoi_legacy": {
-      "_comment": "Legacy single-key setup. Still supported; prefer THENVOI_USER_KEY / THENVOI_AGENT_KEY for new deployments.",
-      "command": "thenvoi-mcp",
+    "band_legacy": {
+      "_comment": "Legacy single-key setup. Still supported; prefer BAND_USER_KEY / BAND_AGENT_KEY for new deployments.",
+      "command": "band-mcp",
       "env": {
-        "THENVOI_API_KEY": "your_api_key_here",
-        "THENVOI_BASE_URL": "https://app.thenvoi.com"
+        "BAND_API_KEY": "your_api_key_here",
+        "BAND_BASE_URL": "https://app.band.ai"
       }
     }
   }

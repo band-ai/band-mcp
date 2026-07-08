@@ -23,9 +23,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from mcp.server.fastmcp import FastMCP
 
-from thenvoi_mcp.config import Config
-from thenvoi_mcp.tools import registrar
-from thenvoi_mcp.tools.registrar import register_tools
+from band_mcp.config import Config
+from band_mcp.tools import registrar
+from band_mcp.tools.registrar import register_tools
 
 
 @dataclass
@@ -34,7 +34,6 @@ class _FakeAppCtx:
 
     human_tools: Any = None
     agent_tools_by_room: dict[str, Any] | None = None
-    _cache_reset_count: int = 0
 
     def __post_init__(self) -> None:
         if self.agent_tools_by_room is None:
@@ -61,17 +60,27 @@ def _patch_tool_resolvers(monkeypatch: pytest.MonkeyPatch) -> None:
         app = ctx.request_context.lifespan_context
         return app.human_tools
 
-    def fake_get_agent_tools(ctx: Any, room_id: str) -> Any:
+    def fake_get_agent_tools(
+        ctx: Any,
+        room_id: str | None,
+        *,
+        sdk_room_id: str | None = None,  # noqa: ARG001 - mirrors production helper
+    ) -> Any:
         app = ctx.request_context.lifespan_context
         return app.agent_tools_by_room.get(room_id) or app.agent_tools_by_room.get("*")
 
-    def fake_reset(ctx: Any) -> None:
-        app = ctx.request_context.lifespan_context
-        app._cache_reset_count += 1
+    class NoopAsyncLock:
+        async def __aenter__(self) -> None:
+            return None
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
 
     monkeypatch.setattr(registrar, "get_human_tools", fake_get_human_tools)
     monkeypatch.setattr(registrar, "get_agent_tools", fake_get_agent_tools)
-    monkeypatch.setattr(registrar, "reset_agent_tools_cache", fake_reset)
+    monkeypatch.setattr(
+        registrar, "get_agent_tools_lock", MagicMock(return_value=NoopAsyncLock())
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -93,12 +102,12 @@ async def test_scope_agent_human_no_tools_registers_both_surfaces_without_contac
 
     names = {t.name for t in await mcp.list_tools()}
     # Agent surface present
-    assert "thenvoi_send_message" in names
+    assert "band_send_message" in names
     # Human surface present
-    assert "thenvoi_send_my_chat_message" in names
+    assert "band_send_my_chat_message" in names
     # Contacts not present by default
-    assert "thenvoi_list_my_contacts" not in names
-    assert "thenvoi_list_contacts" not in names
+    assert "band_list_my_contacts" not in names
+    assert "band_list_contacts" not in names
 
 
 async def test_scope_agent_human_tools_contacts_exposes_resolve_handle() -> None:
@@ -112,9 +121,9 @@ async def test_scope_agent_human_tools_contacts_exposes_resolve_handle() -> None
     register_tools(mcp, cfg)
     names = {t.name for t in await mcp.list_tools()}
 
-    assert "thenvoi_resolve_handle" in names
-    assert "thenvoi_list_my_contacts" in names
-    assert "thenvoi_list_contacts" in names
+    assert "band_resolve_handle" in names
+    assert "band_list_my_contacts" in names
+    assert "band_list_contacts" in names
 
 
 async def test_scope_agent_human_tools_memory_exposes_memory_tools() -> None:
@@ -128,8 +137,8 @@ async def test_scope_agent_human_tools_memory_exposes_memory_tools() -> None:
     register_tools(mcp, cfg)
     names = {t.name for t in await mcp.list_tools()}
 
-    assert "thenvoi_list_user_memories" in names
-    assert "thenvoi_store_memory" in names
+    assert "band_list_user_memories" in names
+    assert "band_store_memory" in names
 
 
 async def test_scope_agent_human_tools_contacts_memory_exposes_both() -> None:
@@ -143,8 +152,8 @@ async def test_scope_agent_human_tools_contacts_memory_exposes_both() -> None:
     register_tools(mcp, cfg)
     names = {t.name for t in await mcp.list_tools()}
 
-    assert "thenvoi_list_my_contacts" in names
-    assert "thenvoi_list_user_memories" in names
+    assert "band_list_my_contacts" in names
+    assert "band_list_user_memories" in names
 
 
 # ---------------------------------------------------------------------------
@@ -159,10 +168,10 @@ async def test_scope_human_only_does_not_register_agent_tools() -> None:
     names = {t.name for t in await mcp.list_tools()}
 
     # Human tools present
-    assert "thenvoi_list_my_chats" in names
+    assert "band_list_my_chats" in names
     # Agent tools absent
-    assert "thenvoi_send_message" not in names
-    assert "thenvoi_get_participants" not in names
+    assert "band_send_message" not in names
+    assert "band_get_participants" not in names
 
 
 async def test_call_agent_tool_in_human_only_scope_is_unknown() -> None:
@@ -172,7 +181,7 @@ async def test_call_agent_tool_in_human_only_scope_is_unknown() -> None:
 
     # FastMCP surfaces unknown tools as ToolError("Unknown tool: ...").
     with pytest.raises(Exception) as excinfo:
-        await mcp._tool_manager.call_tool("thenvoi_send_message", {})
+        await mcp._tool_manager.call_tool("band_send_message", {})
     assert "Unknown tool" in str(excinfo.value)
 
 
@@ -187,7 +196,7 @@ async def test_pinned_mode_agent_send_message_dispatches_to_pinned_room() -> Non
     register_tools(mcp, cfg)
 
     # Schema should NOT advertise chat_id or room_id
-    tool = next(t for t in await mcp.list_tools() if t.name == "thenvoi_send_message")
+    tool = next(t for t in await mcp.list_tools() if t.name == "band_send_message")
     props = tool.inputSchema.get("properties", {})
     assert "chat_id" not in props
     assert "room_id" not in props
@@ -198,15 +207,13 @@ async def test_pinned_mode_agent_send_message_dispatches_to_pinned_room() -> Non
     app_ctx = _FakeAppCtx(agent_tools_by_room={"r_pinned": agent_tools})
 
     result = await mcp._tool_manager.call_tool(
-        "thenvoi_send_message",
+        "band_send_message",
         {"content": "hi", "mentions": ["@bob"]},
         context=_FakeCtx(app_ctx),
     )
     agent_tools.send_message.assert_awaited_once()
     call_kwargs = agent_tools.send_message.await_args.kwargs
     assert "chat_id" not in call_kwargs  # stripped before method call
-    # Reset called once for this invocation.
-    assert app_ctx._cache_reset_count == 1
     # Result serialized to JSON
     assert "ok" in str(result)
 
@@ -217,7 +224,7 @@ async def test_pinned_mode_human_send_message_dispatches_with_pinned_chat_id() -
     register_tools(mcp, cfg)
 
     tool = next(
-        t for t in await mcp.list_tools() if t.name == "thenvoi_send_my_chat_message"
+        t for t in await mcp.list_tools() if t.name == "band_send_my_chat_message"
     )
     props = tool.inputSchema.get("properties", {})
     assert "chat_id" not in props
@@ -227,7 +234,7 @@ async def test_pinned_mode_human_send_message_dispatches_with_pinned_chat_id() -
     app_ctx = _FakeAppCtx(human_tools=human_tools)
 
     result = await mcp._tool_manager.call_tool(
-        "thenvoi_send_my_chat_message",
+        "band_send_my_chat_message",
         {"content": "hi", "recipients": "@bob"},
         context=_FakeCtx(app_ctx),
     )
@@ -241,7 +248,7 @@ async def test_pinned_mode_room_less_human_tool_unchanged() -> None:
     cfg = Config(scope=["human"], tools=[], user_key="u", room_id="r_pinned")
     register_tools(mcp, cfg)
 
-    tool = next(t for t in await mcp.list_tools() if t.name == "thenvoi_list_my_chats")
+    tool = next(t for t in await mcp.list_tools() if t.name == "band_list_my_chats")
     props = tool.inputSchema.get("properties", {})
     assert "chat_id" not in props  # it was never there to begin with
     # Tool still listed and callable.
@@ -250,7 +257,7 @@ async def test_pinned_mode_room_less_human_tool_unchanged() -> None:
     app_ctx = _FakeAppCtx(human_tools=human_tools)
 
     await mcp._tool_manager.call_tool(
-        "thenvoi_list_my_chats", {}, context=_FakeCtx(app_ctx)
+        "band_list_my_chats", {}, context=_FakeCtx(app_ctx)
     )
     human_tools.list_my_chats.assert_awaited_once()
 
@@ -270,7 +277,7 @@ async def test_unpinned_agent_dispatch_via_chat_id() -> None:
     app_ctx = _FakeAppCtx(agent_tools_by_room={"r_abc": agent_tools})
 
     await mcp._tool_manager.call_tool(
-        "thenvoi_send_message",
+        "band_send_message",
         {"content": "hi", "mentions": ["@bob"], "chat_id": "r_abc"},
         context=_FakeCtx(app_ctx),
     )
@@ -288,7 +295,7 @@ async def test_unpinned_agent_dispatch_via_room_id_alias() -> None:
 
     # Client sends "room_id" — the alias routes to chat_id internally.
     await mcp._tool_manager.call_tool(
-        "thenvoi_send_message",
+        "band_send_message",
         {"content": "hi", "mentions": ["@bob"], "room_id": "r_xyz"},
         context=_FakeCtx(app_ctx),
     )

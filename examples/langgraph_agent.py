@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-LangGraph agent that uses Thenvoi MCP tools with langchain-mcp-adapters.
+LangGraph agent that uses Band MCP tools with langchain-mcp-adapters.
 
-This example shows how to use the Thenvoi MCP server with LangGraph
+This example shows how to use the Band MCP server with LangGraph
 using the MultiServerMCPClient from langchain-mcp-adapters.
 
 Usage:
     export OPENAI_API_KEY="sk-..."
-    export THENVOI_API_KEY="thnv_..."
+    export BAND_API_KEY="band_..."
     uv run examples/langgraph_agent.py
 """
 
@@ -32,31 +32,29 @@ logger = logging.getLogger(__name__)
 
 
 async def main() -> None:
-    """Run LangGraph agent with Thenvoi MCP tools."""
-    if not os.getenv("OPENAI_API_KEY") or not os.getenv("THENVOI_API_KEY"):
-        logger.error("Error: Set OPENAI_API_KEY and THENVOI_API_KEY")
+    """Run LangGraph agent with Band MCP tools."""
+    if not os.getenv("OPENAI_API_KEY") or not os.getenv("BAND_API_KEY"):
+        logger.error("Error: Set OPENAI_API_KEY and BAND_API_KEY")
         return
 
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-    # Create MCP client that connects to Thenvoi server
+    # Create MCP client that connects to Band server
     client = MultiServerMCPClient(
         {
-            "thenvoi": {
+            "band": {
                 "command": "uv",
-                "args": ["--directory", project_root, "run", "thenvoi-mcp"],
+                "args": ["--directory", project_root, "run", "band-mcp"],
                 "transport": "stdio",
                 "env": {
-                    "THENVOI_API_KEY": os.getenv("THENVOI_API_KEY", ""),
-                    "THENVOI_BASE_URL": os.getenv(
-                        "THENVOI_BASE_URL", "https://app.thenvoi.com"
-                    ),
+                    "BAND_API_KEY": os.getenv("BAND_API_KEY", ""),
+                    "BAND_BASE_URL": os.getenv("BAND_BASE_URL", "https://app.band.ai"),
                 },
             },
         }
     )
 
-    logger.info("Loading tools from Thenvoi MCP server...")
+    logger.info("Loading tools from Band MCP server...")
     tools = await client.get_tools()
     logger.info(f"Loaded {len(tools)} tools!")
 

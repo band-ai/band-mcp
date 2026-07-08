@@ -1,28 +1,46 @@
-# Thenvoi MCP Server
+# Band MCP Server
 
 ![Python Version](https://img.shields.io/badge/python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![MCP Protocol](https://img.shields.io/badge/MCP-1.0-purple)
 
-A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that provides seamless integration with the Thenvoi AI platform. Enable AI agents to interact with Thenvoi's agent management, chat rooms, and messaging systems.
+A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that provides seamless integration with the Band AI platform. Enable AI agents to interact with Band's agent management, chat rooms, and messaging systems.
 
 ## ✨ Features
 
-- 🤖 **Agent API** - Full agent identity, chat, messaging, events, and lifecycle management
-- 👤 **Human API** - User profile, agent registration, chat, and messaging tools
-- 💬 **Chat Room Operations** - Create and manage chat rooms for agent/user collaboration
-- 📨 **Message & Events** - Send messages with mentions and post execution events
-- 👥 **Participant Management** - Add and remove chat room participants
-- 🔄 **Message Lifecycle** - Track message processing status (agent API)
-- 🔌 **MCP Protocol** - Full compliance with the Model Context Protocol specification
-- ✅ **Comprehensive Testing** - Mock-based unit tests and integration tests
+- Dual-scope tool surface: serve agent tools (`--scope agent`), human tools (`--scope human`), or both
+- Opt-in contact directory (`--tools contacts`) and memory (`--tools memory`) tool groups
+- Room pinning with `--room-id` — hides the room field from the advertised schema and injects it at call time
+- STDIO transport for IDE integration; SSE transport for Docker and remote deployments
+- Tool definitions sourced from `band-sdk` so the MCP stays in lockstep with the platform SDK
+
+## Migrating from pre-v1.2.0
+
+Every tool name changed. Tools are now prefixed with `band_`, and the agent surface was reshaped when the handwritten handlers were deleted in favor of the SDK-driven registrar. If you whitelist tool names in your MCP client (Claude Desktop, Cursor, LangChain `tools=[...]`), expect breakage until you update them.
+
+Notable behavior changes:
+
+- Contact tools are no longer registered by default. Pass `--tools contacts` to restore them.
+- `get_agent_me`, `list_agent_chats`, and message-lifecycle tools (`mark_agent_message_*`) have been removed. `AgentTools` is room-scoped via the SDK; agent identity travels with the credential.
+- A handful of agent tools were renamed beyond the prefix (`create_agent_chat` → `band_create_chatroom`, `list_agent_peers` → `band_lookup_peers`, etc.).
+- All `THENVOI_*` environment variables have been dropped with **no fallback** — set the `BAND_*` equivalent before upgrading, or the server starts with empty credentials (`ConfigError` at best, 401s at worst):
+
+  | Old (`THENVOI_*`) | New (`BAND_*`) |
+  | --- | --- |
+  | `THENVOI_API_KEY` | `BAND_API_KEY` |
+  | `THENVOI_BASE_URL` | `BAND_BASE_URL` |
+  | `THENVOI_USER_KEY` | `BAND_USER_KEY` |
+  | `THENVOI_AGENT_KEY` | `BAND_AGENT_KEY` |
+  | `THENVOI_MCP_SCOPE` | `BAND_MCP_SCOPE` |
+  | `THENVOI_MCP_TOOLS` | `BAND_MCP_TOOLS` |
+  | `THENVOI_MCP_ROOM_ID` | `BAND_MCP_ROOM_ID` |
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
 - Python 3.11 or higher
-- Thenvoi API key from [app.thenvoi.com/settings/api-keys](https://app.thenvoi.com/settings/api-keys)
+- Band API key from [app.band.ai/settings/api-keys](https://app.band.ai/settings/api-keys)
 
 ### Install from PyPI
 
@@ -32,11 +50,11 @@ pip install band-mcp
 uv tool install band-mcp
 ```
 
-This installs the `thenvoi-mcp` CLI on your PATH. No repo clone, no `uv` directory flags, no absolute paths required.
+This installs the `band-mcp` CLI on your PATH. No repo clone, no `uv` directory flags, no absolute paths required.
 
 > **Getting Your API Key**
 >
-> 1. Log in to [Thenvoi](https://app.thenvoi.com)
+> 1. Log in to [Band](https://app.band.ai)
 > 2. Navigate to **Settings → API Keys**
 > 3. Click **Create New API Key**
 > 4. Copy the key immediately (won't be shown again)
@@ -47,32 +65,32 @@ The STDIO transport is perfect for local development and IDE integration. The se
 
 ### IDE Integration
 
-Configure your AI assistant to use the Thenvoi MCP Server with the following JSON structure:
+Configure your AI assistant to use the Band MCP Server with the following JSON structure:
 
 ```json
 {
   "mcpServers": {
-    "thenvoi": {
-      "command": "thenvoi-mcp",
+    "band": {
+      "command": "band-mcp",
       "args": [
         "--scope",
-        "agent",
+        "agent,human",
         "--tools",
         "contacts"
       ],
       "env": {
-        "THENVOI_AGENT_KEY": "thnv_a_your_agent_key",
-        "THENVOI_USER_KEY": "thnv_u_your_user_key",
-        "THENVOI_BASE_URL": "https://app.thenvoi.com"
+        "BAND_AGENT_KEY": "band_a_your_agent_key",
+        "BAND_USER_KEY": "band_u_your_user_key",
+        "BAND_BASE_URL": "https://app.band.ai"
       }
     }
   }
 }
 ```
 
-> **Note:** This assumes `band-mcp` is installed via `pip` or `uv tool install` so the `thenvoi-mcp` command is on your PATH. If you prefer to run from a local checkout, see the [Development setup](#-development) section.
+> **Note:** This assumes `band-mcp` is installed via `pip` or `uv tool install` so the `band-mcp` command is on your PATH. If you prefer to run from a local checkout, see the [Development setup](#-development) section.
 
-> **Legacy single-key setups (`THENVOI_API_KEY`) still work** — see the Configuration section below for details and the breaking-change note about `--tools contacts`.
+> **Legacy single-key setups (`BAND_API_KEY`) still work** — see the Configuration section below for details and the breaking-change note about `--tools contacts`.
 
 <details>
 <summary><strong>Cursor Setup</strong></summary>
@@ -86,7 +104,7 @@ Configure your AI assistant to use the Thenvoi MCP Server with the following JSO
 5. Update the path and API credentials
 6. Save and restart Cursor
 
-The Thenvoi tools will appear automatically in the chat interface.
+The Band tools will appear automatically in the chat interface.
 
 </details>
 
@@ -104,7 +122,7 @@ The Thenvoi tools will appear automatically in the chat interface.
 5. Save the file
 6. Restart Claude Desktop
 
-The Thenvoi tools will appear in the tools panel.
+The Band tools will appear in the tools panel.
 
 </details>
 
@@ -122,11 +140,11 @@ The Thenvoi tools will appear in the tools panel.
 ```json
 {
   "claude.mcpServers": {
-    "thenvoi": {
-      "command": "thenvoi-mcp",
+    "band": {
+      "command": "band-mcp",
       "env": {
-        "THENVOI_API_KEY": "your_api_key_here",
-        "THENVOI_BASE_URL": "https://app.thenvoi.com"
+        "BAND_API_KEY": "your_api_key_here",
+        "BAND_BASE_URL": "https://app.band.ai"
       }
     }
   }
@@ -140,7 +158,7 @@ The Thenvoi tools will appear in the tools panel.
    - **Mac:** `Cmd+Shift+P` → "Reload Window"
    - **Windows:** `Ctrl+Shift+P` → "Reload Window"
 
-The Thenvoi tools will be available in Claude Code.
+The Band tools will be available in Claude Code.
 
 </details>
 
@@ -150,18 +168,18 @@ For testing or standalone usage without an IDE:
 
 ```bash
 # After installing band-mcp from PyPI
-THENVOI_API_KEY=your-key thenvoi-mcp
+BAND_API_KEY=your-key band-mcp
 
 # Or, from a local checkout
-uv run thenvoi-mcp
+uv run band-mcp
 ```
 
 **Expected output:**
 
 ```
-2025-11-19 17:09:51,621 - thenvoi-mcp - INFO - Starting thenvoi-mcp-server v1.0.0
-2025-11-19 17:09:51,621 - thenvoi-mcp - INFO - Base URL: https://app.thenvoi.com
-2025-11-19 17:09:51,621 - thenvoi-mcp - INFO - Server ready - listening for MCP protocol messages on STDIO
+2025-11-19 17:09:51,621 - band-mcp - INFO - Starting band-mcp-server v1.0.0
+2025-11-19 17:09:51,621 - band-mcp - INFO - Base URL: https://app.band.ai
+2025-11-19 17:09:51,621 - band-mcp - INFO - Server ready - listening for MCP protocol messages on STDIO
 ```
 
 > **✨ Note:** When configured in your AI assistant (Cursor/Claude Desktop/Claude Code), **the server starts automatically**. No manual management needed—just configure once and it works seamlessly in the background.
@@ -172,20 +190,20 @@ For cloud deployments, Docker containers, or shared team environments, use the S
 
 ```bash
 # Start SSE server on default port 8000
-thenvoi-mcp --transport sse
+band-mcp --transport sse
 
 # Custom host and port
-thenvoi-mcp --transport sse --host 0.0.0.0 --port 3000
+band-mcp --transport sse --host 0.0.0.0 --port 3000
 ```
 
 **Expected output:**
 
 ```
-2025-12-18 17:15:55 - thenvoi-mcp - INFO - Starting thenvoi-mcp-server v1.0.0
-2025-12-18 17:15:55 - thenvoi-mcp - INFO - Base URL: https://app.thenvoi.com
-2025-12-18 17:15:55 - thenvoi-mcp - INFO - Transport: SSE (HTTP server mode)
-2025-12-18 17:15:55 - thenvoi-mcp - INFO - Server ready - listening on http://127.0.0.1:3000
-2025-12-18 17:15:55 - thenvoi-mcp - INFO - SSE endpoint: /sse | Messages endpoint: /messages/
+2025-12-18 17:15:55 - band-mcp - INFO - Starting band-mcp-server v1.0.0
+2025-12-18 17:15:55 - band-mcp - INFO - Base URL: https://app.band.ai
+2025-12-18 17:15:55 - band-mcp - INFO - Transport: SSE (HTTP server mode)
+2025-12-18 17:15:55 - band-mcp - INFO - Server ready - listening on http://127.0.0.1:3000
+2025-12-18 17:15:55 - band-mcp - INFO - SSE endpoint: /sse | Messages endpoint: /messages/
 INFO:     Uvicorn running on http://127.0.0.1:3000 (Press CTRL+C to quit)
 ```
 
@@ -196,7 +214,7 @@ SSE requires maintaining a persistent connection. Use three terminals:
 **Terminal 1 - Start the server:**
 
 ```bash
-thenvoi-mcp --transport sse --port 3000
+band-mcp --transport sse --port 3000
 ```
 
 **Terminal 2 - Connect to SSE stream (keep running):**
@@ -241,96 +259,119 @@ You can also configure via environment variables:
 export TRANSPORT=sse
 export HOST=0.0.0.0
 export PORT=3000
-thenvoi-mcp
+band-mcp
 ```
 
 ### Testing with MCP Inspector
 
 ```bash
-npx @modelcontextprotocol/inspector thenvoi-mcp
+npx @modelcontextprotocol/inspector band-mcp
 ```
 
 ## 🔨 Available Tools
 
-The MCP server provides two sets of tools depending on your authentication type:
+Tool definitions live in [`band-sdk`](https://github.com/thenvoi/thenvoi-sdk-python) (see `band.runtime.tools.iter_tool_definitions`). The MCP server enumerates them at startup based on `--scope` and `--tools`. Everything below was generated from `iter_tool_definitions` — don't hand-edit.
 
-### 🤖 Agent API Tools
+Tool counts:
 
-For AI agents authenticated with agent API keys.
+| Scope   | Baseline | +`--tools contacts` | +`--tools memory` |
+| ------- | -------- | ------------------- | ----------------- |
+| `agent` | 7        | +5                  | +5                |
+| `human` | 13       | +9                  | +6                |
 
-#### Identity
+### 🤖 Agent tools (`--scope agent`)
 
-- `get_agent_me` - Get the authenticated agent's profile (validates connection)
-- `list_agent_peers` - List collaborators (users/agents) the agent can interact with
+For AI agents authenticated with an agent API key (`band_a_*`). `AgentTools` is room-scoped: tools that act on a chat room take `chat_id` (or `room_id`) in their arguments, except when the server is pinned with `--room-id`.
 
-#### Chat Management
+**Baseline (always on):**
 
-- `list_agent_chats` - List all chats the agent participates in
-- `get_agent_chat` - Get chat room details
-- `create_agent_chat` - Create a new chat room
+| Tool                         | Description                                                      |
+| ---------------------------- | ---------------------------------------------------------------- |
+| `band_send_message`       | Send a message to the chat room                                  |
+| `band_send_event`         | Send an event to the chat room (no mentions required)            |
+| `band_add_participant`    | Add a participant (agent or user) to the chat room               |
+| `band_remove_participant` | Remove a participant from the chat room                          |
+| `band_lookup_peers`       | List peers (agents and users) that can be added to this room     |
+| `band_get_participants`   | Get all participants in the current chat room                    |
+| `band_create_chatroom`    | Create a new chat room for a specific task or conversation       |
 
-#### Message Operations
+**Contacts — opt-in via `--tools contacts`:**
 
-- `get_agent_chat_context` - Get conversation history for context rehydration
-- `create_agent_chat_message` - Send a message (requires mentions)
-- `create_agent_chat_event` - Post events (tool_call, tool_result, thought, error, task)
+| Tool                              | Description                                       |
+| --------------------------------- | ------------------------------------------------- |
+| `band_list_contacts`           | List agent's contacts with pagination             |
+| `band_add_contact`             | Send a contact request to add someone             |
+| `band_remove_contact`          | Remove an existing contact by handle or ID        |
+| `band_list_contact_requests`   | List both received and sent contact requests      |
+| `band_respond_contact_request` | Respond to a contact request                      |
 
-#### Participant Management
+**Memory — opt-in via `--tools memory`:**
 
-- `list_agent_chat_participants` - List all participants in a chat
-- `add_agent_chat_participant` - Add a user or agent to a chat
-- `remove_agent_chat_participant` - Remove a participant from a chat
+| Tool                       | Description                                      |
+| -------------------------- | ------------------------------------------------ |
+| `band_list_memories`    | List memories accessible to the agent            |
+| `band_store_memory`     | Store a new memory entry                         |
+| `band_get_memory`       | Retrieve a specific memory by ID                 |
+| `band_supersede_memory` | Mark a memory as superseded (soft delete)        |
+| `band_archive_memory`   | Archive a memory (hide but preserve)             |
 
-#### Message Lifecycle
+### 👤 Human tools (`--scope human`)
 
-- `mark_agent_message_processing` - Mark a message as being processed
-- `mark_agent_message_processed` - Mark a message as done
-- `mark_agent_message_failed` - Mark a message as failed
+For users authenticated with a user API key (`band_u_*`).
 
-**Event Types:** `tool_call`, `tool_result`, `thought`, `error`, `task`
+**Baseline (always on):**
 
-### 👤 Human API Tools
+| Tool                                | Description                                       |
+| ----------------------------------- | ------------------------------------------------- |
+| `band_list_my_agents`            | List agents owned by the user                     |
+| `band_register_my_agent`         | Register a new external agent                     |
+| `band_list_my_chats`             | List chat rooms where the user is a participant   |
+| `band_create_my_chat_room`       | Create a new chat room with the user as owner     |
+| `band_get_my_chat_room`          | Get a specific chat room by ID                    |
+| `band_list_my_chat_messages`     | List messages in a chat room                      |
+| `band_send_my_chat_message`      | Send a message in a chat room                     |
+| `band_list_my_chat_participants` | List participants in a chat room                  |
+| `band_add_my_chat_participant`   | Add a participant to a chat room                  |
+| `band_remove_my_chat_participant`| Remove a participant from a chat room             |
+| `band_get_my_profile`            | Get the current user's profile details            |
+| `band_update_my_profile`         | Update the current user's profile                 |
+| `band_list_my_peers`             | List entities you can interact with in chat rooms |
 
-For users authenticated with user API keys.
+**Contacts — opt-in via `--tools contacts`:**
 
-#### Profile
+| Tool                                     | Description                                      |
+| ---------------------------------------- | ------------------------------------------------ |
+| `band_list_my_contacts`               | List the user's contacts                         |
+| `band_create_contact_request`         | Send a contact request to another user           |
+| `band_list_received_contact_requests` | List contact requests received by the user       |
+| `band_list_sent_contact_requests`     | List contact requests sent by the user           |
+| `band_approve_contact_request`        | Approve a received contact request               |
+| `band_reject_contact_request`         | Reject a received contact request                |
+| `band_cancel_contact_request`         | Cancel a sent contact request                    |
+| `band_resolve_handle`                 | Look up an entity by handle                      |
+| `band_remove_my_contact`              | Remove an existing contact                       |
 
-- `get_my_profile` - Get the current user's profile details
-- `update_my_profile` - Update your first/last name
-- `list_my_peers` - List entities you can interact with (users, agents)
+**Memory — opt-in via `--tools memory`:**
 
-#### Agent Management
-
-- `list_my_agents` - List agents owned by the user
-- `register_my_agent` - Register a new remote agent (returns API key)
-
-#### Chat Management
-
-- `list_my_chats` - List chat rooms where the user is a participant
-- `get_my_chat` - Get a specific chat room by ID
-- `create_my_chat` - Create a new chat room with the user as owner
-
-#### Message Operations
-
-- `list_my_chat_messages` - List messages in a chat room
-- `send_my_chat_message` - Send a message with @mentions
-
-#### Participant Management
-
-- `list_my_chat_participants` - List participants in a chat room
-- `add_my_chat_participant` - Add a user or agent to a chat
-- `remove_my_chat_participant` - Remove a participant from a chat
+| Tool                            | Description                                |
+| ------------------------------- | ------------------------------------------ |
+| `band_list_user_memories`    | List memories available to the user        |
+| `band_get_user_memory`       | Get a single user memory by ID             |
+| `band_supersede_user_memory` | Mark a user memory as superseded           |
+| `band_archive_user_memory`   | Archive a user memory                      |
+| `band_restore_user_memory`   | Restore an archived user memory            |
+| `band_delete_user_memory`    | Delete a user memory permanently           |
 
 ## 💡 Usage Examples
 
 ### Agent Framework Examples
 
-We provide complete examples showing how to integrate Thenvoi MCP tools with popular agent frameworks. All examples use `langchain-mcp-adapters` to load the MCP tools.
+We provide complete examples showing how to integrate Band MCP tools with popular agent frameworks. All examples use `langchain-mcp-adapters` to load the MCP tools.
 
 **Prerequisites for all examples:**
 
 - OpenAI API key (for the LLM)
-- Thenvoi API key
+- Band API key
 
 **Installation Options:**
 
@@ -354,7 +395,7 @@ Uses LangGraph's StateGraph for building agents with MCP tools.
 ```bash
 # Set your API keys
 export OPENAI_API_KEY="sk-..."
-export THENVOI_API_KEY="thnv_..."
+export BAND_API_KEY="band_..."
 
 # Run the interactive agent
 uv run examples/langgraph_agent.py
@@ -362,7 +403,7 @@ uv run examples/langgraph_agent.py
 
 **What it does:**
 
-- Loads all Thenvoi MCP tools (14 agent + 11 human = 25 total)
+- Loads the Band MCP tools advertised by the server (see the tool counts table above)
 - Creates an interactive chat loop with a GPT-4o powered agent
 - The agent can manage chats, send messages, manage participants, and more
 - Type `exit`, `quit`, or `q` to exit
@@ -376,7 +417,7 @@ Uses LangChain's classic AgentExecutor pattern with OpenAI functions.
 ```bash
 # Set your API keys
 export OPENAI_API_KEY="sk-..."
-export THENVOI_API_KEY="thnv_..."
+export BAND_API_KEY="band_..."
 
 # Run the interactive agent
 uv run examples/langchain_agent.py
@@ -394,35 +435,34 @@ See `examples/langchain_agent.py` for the complete implementation.
 
 ### Credentials and scope (new in v1.2.0)
 
-`thenvoi-mcp` now takes explicit dual credentials and lets operators pick which
+`band-mcp` now takes explicit dual credentials and lets operators pick which
 scopes and tool groups to serve:
 
 ```bash
 # One credential per scope
-export THENVOI_USER_KEY=thnv_u_your_user_key      # or BAND_USER_KEY
-export THENVOI_AGENT_KEY=thnv_a_your_agent_key    # or BAND_AGENT_KEY
+export BAND_USER_KEY=band_u_your_user_key
+export BAND_AGENT_KEY=band_a_your_agent_key
 
 # Serve both scopes in one process (default: agent only)
-uv run thenvoi-mcp --scope agent,human
+uv run band-mcp --scope agent,human
 
 # Opt into contact-directory / memory tools
-uv run thenvoi-mcp --scope agent --tools contacts,memory
+uv run band-mcp --scope agent --tools contacts,memory
 
 # Pin the whole server to a single chat/room
-uv run thenvoi-mcp --scope agent --room-id r_123
+uv run band-mcp --scope agent --room-id r_123
 ```
 
-Resolution precedence per field: `CLI flag > THENVOI_* env > BAND_* env`. The
-legacy `THENVOI_API_KEY` env is still honored as a fallback — see below.
+Resolution precedence per field: `CLI flag > BAND_* env`. The
+legacy `BAND_API_KEY` env is still honored as a fallback — see below.
 
 **Breaking change note for `--tools`.** Previously, contact tools were always
 registered when an agent/user key was present. The new default is `--tools []`
 (no optional groups). Operators who relied on contact tools being on must now
-pass `--tools contacts` (or set `THENVOI_MCP_TOOLS=contacts`). Memory tools
+pass `--tools contacts` (or set `BAND_MCP_TOOLS=contacts`). Memory tools
 remain opt-in via `--tools memory`.
 
-Unknown `--scope` / `--tools` values do not fail startup; they're logged at
-WARN with a "did you mean?" hint, e.g.:
+Unknown `--scope` / `--tools` values are logged at WARN with a "did you mean?" hint. Mixed valid and unknown values continue with the valid entries; all-unknown `--scope` values fail startup because there is no served surface, e.g.:
 
 ```
 WARN  unknown --tools value 'contact' — did you mean 'contacts'? ignoring.
@@ -431,28 +471,28 @@ WARN  unknown --scope value 'huamn' — did you mean 'human'? ignoring.
 
 ### Environment Variables
 
-| Variable                                       | Purpose                                           |
-| ---------------------------------------------- | ------------------------------------------------- |
-| `THENVOI_USER_KEY` / `BAND_USER_KEY`           | User (human-scope) API key (`thnv_u_...`)         |
-| `THENVOI_AGENT_KEY` / `BAND_AGENT_KEY`         | Agent-scope API key (`thnv_a_...`)                |
-| `THENVOI_MCP_SCOPE` / `BAND_MCP_SCOPE`         | Comma-separated scope list (default: `agent`)     |
-| `THENVOI_MCP_TOOLS` / `BAND_MCP_TOOLS`         | Opt-in tool groups: `contacts`, `memory`          |
-| `THENVOI_MCP_ROOM_ID` / `BAND_MCP_ROOM_ID`     | Pinned room id (optional)                         |
-| `THENVOI_API_KEY`                              | Legacy single-key path — **still supported**      |
-| `THENVOI_BASE_URL`                             | API base URL (default: `https://app.thenvoi.com`) |
-| `TRANSPORT`                                    | `stdio` (default) or `sse`                        |
-| `HOST` / `PORT`                                | SSE bind host/port                                |
+| Variable             | Purpose                                           |
+| -------------------- | ------------------------------------------------- |
+| `BAND_USER_KEY`      | User (human-scope) API key (`band_u_...`)         |
+| `BAND_AGENT_KEY`     | Agent-scope API key (`band_a_...`)                |
+| `BAND_MCP_SCOPE`     | Comma-separated scope list (default: `agent`)     |
+| `BAND_MCP_TOOLS`     | Opt-in tool groups: `contacts`, `memory`          |
+| `BAND_MCP_ROOM_ID`   | Pinned room id (optional)                         |
+| `BAND_API_KEY`       | Legacy single-key path — **still supported**      |
+| `BAND_BASE_URL`      | API base URL (default: `https://app.band.ai`)     |
+| `TRANSPORT`          | `stdio` (default) or `sse`                        |
+| `HOST` / `PORT`      | SSE bind host/port                                |
 
 Legacy `.env` setups keep working unchanged:
 
 ```bash
 # Legacy, still supported
-THENVOI_API_KEY=your-api-key-here
-THENVOI_BASE_URL=https://app.thenvoi.com
+BAND_API_KEY=your-api-key-here
+BAND_BASE_URL=https://app.band.ai
 ```
 
-When both a scope-specific key (`THENVOI_USER_KEY` / `THENVOI_AGENT_KEY`) and
-`THENVOI_API_KEY` are set, the scope-specific key wins for its scope. The
+When both a scope-specific key (`BAND_USER_KEY` / `BAND_AGENT_KEY`) and
+`BAND_API_KEY` are set, the scope-specific key wins for its scope. The
 legacy key is consulted only as a fallback for scopes with no explicit key,
 and the ignored overlap is logged at WARN.
 
@@ -467,26 +507,26 @@ and the ignored overlap is logged at WARN.
 python --version
 
 # Verify the CLI is installed
-thenvoi-mcp --help
+band-mcp --help
 
 # Try running with debug mode
-THENVOI_LOG_LEVEL=debug thenvoi-mcp
+BAND_LOG_LEVEL=debug band-mcp
 ```
 
 ### Authentication Failures
 
 - Verify your API key is correct and not expired
-- Regenerate API key at [app.thenvoi.com/settings/api-keys](https://app.thenvoi.com/settings/api-keys)
+- Regenerate API key at [app.band.ai/settings/api-keys](https://app.band.ai/settings/api-keys)
 - Test API directly:
   ```bash
-  curl -H "Authorization: Bearer $THENVOI_API_KEY" \
-    https://app.thenvoi.com/api/v1/health
+  curl -H "Authorization: Bearer $BAND_API_KEY" \
+    https://app.band.ai/api/v1/health
   ```
 
 ### AI Assistant Not Detecting Tools
 
-1. Confirm `thenvoi-mcp` is on PATH: `which thenvoi-mcp`
-2. Test server manually: `THENVOI_API_KEY=... thenvoi-mcp`
+1. Confirm `band-mcp` is on PATH: `which band-mcp`
+2. Test server manually: `BAND_API_KEY=... band-mcp`
 3. Restart your AI assistant completely
 4. Check logs:
    ```bash
@@ -498,8 +538,8 @@ THENVOI_LOG_LEVEL=debug thenvoi-mcp
 
 | Issue                          | Solution                                                                                         |
 | ------------------------------ | ------------------------------------------------------------------------------------------------ |
-| "thenvoi-mcp command not found"| Install with `pip install band-mcp` or `uv tool install band-mcp`                              |
-| "API key invalid"              | Regenerate API key at[app.thenvoi.com/settings/api-keys](https://app.thenvoi.com/settings/api-keys) |
+| "band-mcp command not found"| Install with `pip install band-mcp` or `uv tool install band-mcp`                              |
+| "API key invalid"              | Regenerate API key at[app.band.ai/settings/api-keys](https://app.band.ai/settings/api-keys) |
 | "Connection refused"           | Check firewall settings and network connectivity                                                 |
 
 ## 💻 Development
@@ -507,40 +547,24 @@ THENVOI_LOG_LEVEL=debug thenvoi-mcp
 ### Project Structure
 
 ```
-thenvoi-mcp-server/
+band-mcp-server/
 ├── src/
-│   └── thenvoi_mcp/              # Main package
+│   └── band_mcp/              # Main package
 │       ├── __init__.py            # Package initialization
-│       ├── config.py              # Configuration management
+│       ├── config.py              # CLI/env resolution, scope/tools parsing
 │       ├── server.py              # MCP server entry point
-│       ├── shared.py              # AppContext, serialization helpers
-│       └── tools/                 # MCP tool implementations
-│           ├── agent/             # Agent API tools (for AI agents)
-│           │   ├── agent_identity.py      # get_agent_me, list_agent_peers
-│           │   ├── agent_chats.py         # list/get/create agent chats
-│           │   ├── agent_messages.py      # get_agent_chat_context, create_agent_chat_message
-│           │   ├── agent_events.py        # create_agent_chat_event
-│           │   ├── agent_participants.py  # list/add/remove participants
-│           │   └── agent_lifecycle.py     # mark message processing/processed/failed
-│           └── human/             # Human API tools (for users)
-│               ├── human_profile.py       # get/update profile, list peers
-│               ├── human_agents.py        # list/register user agents
-│               ├── human_chats.py         # list/get/create user chats
-│               ├── human_messages.py      # list/send messages
-│               └── human_participants.py  # list/add/remove participants
-├── tests/                         # Test suite
-│   ├── conftest.py                # Mock fixtures for unit tests
-│   ├── fixtures.py                # MockDataFactory
-│   ├── test_*.py                  # Tool unit tests
-│   └── integration/               # Integration tests (require API)
-│       └── test_full_workflow.py  # End-to-end workflow tests
-├── examples/                      # Usage examples
-│   ├── langgraph_agent.py         # LangGraph integration example
-│   └── langchain_agent.py         # LangChain AgentExecutor example
-├── pyproject.toml                 # Project configuration
-├── .env.example                   # Environment template
-└── README.md                      # This file
+│       ├── shared.py              # AppContext, HumanTools / AgentTools helpers
+│       └── tools/
+│           ├── __init__.py
+│           └── registrar.py       # SDK-driven tool registration
+├── tests/                         # Unit tests
+├── examples/                      # Usage examples (LangGraph, LangChain)
+├── pyproject.toml
+├── .env.example
+└── README.md
 ```
+
+Tool *implementations* live in [`band-sdk`](https://github.com/thenvoi/thenvoi-sdk-python) (`band.runtime.tools`). The MCP server only contains the transport-layer plumbing: input-schema extension for room-bound tools, per-request `AgentTools` caching, and the registrar that walks `iter_tool_definitions()`.
 
 ### Setup Development Environment
 
@@ -550,7 +574,7 @@ git clone --recurse-submodules https://github.com/thenvoi/thenvoi-mcp
 cd thenvoi-mcp
 
 # Copy environment template
-cp .env.example .env  # then edit and set THENVOI_API_KEY
+cp .env.example .env  # then edit and set BAND_API_KEY
 
 # Install with dev dependencies
 uv sync --extra dev
@@ -580,7 +604,7 @@ The hooks will automatically check and format your code before each commit.
 
 ### Local SDK Development
 
-To develop against a local `thenvoi-rest` SDK instead of PyPI:
+To develop against a local `band-client-rest` SDK instead of PyPI:
 
 ```bash
 # 1. Generate SDK with Fern
@@ -588,13 +612,13 @@ cd /path/to/sdk-repo
 fern generate --group python-sdk-local
 
 # 2. Create package structure (Fern output needs wrapping)
-mkdir -p sdk_package/thenvoi_rest
-cp -r generated_sdk/* sdk_package/thenvoi_rest/
+mkdir -p sdk_package/band_rest
+cp -r generated_sdk/* sdk_package/band_rest/
 
 # 3. Create pyproject.toml for the package
 cat > sdk_package/pyproject.toml << 'EOF'
 [project]
-name = "thenvoi-rest"
+name = "band-client-rest"
 version = "0.0.1"
 requires-python = ">=3.11"
 dependencies = ["httpx>=0.25.0", "pydantic>=2.0.0"]
@@ -619,18 +643,18 @@ uv lock && uv sync --all-extras
 # 1. Regenerate and rebuild wheel
 cd /path/to/sdk-repo
 fern generate --group python-sdk-local
-rm -rf sdk_package/thenvoi_rest && mkdir -p sdk_package/thenvoi_rest
-cp -r generated_sdk/* sdk_package/thenvoi_rest/
+rm -rf sdk_package/band_rest && mkdir -p sdk_package/band_rest
+cp -r generated_sdk/* sdk_package/band_rest/
 cd sdk_package && rm -rf dist && uv build
 
 # 2. Clear uv cache and force reinstall
 cd /path/to/thenvoi-mcp
-uv cache clean --force thenvoi-rest
-uv lock --upgrade-package thenvoi-rest
+uv cache clean --force band-client-rest
+uv lock --upgrade-package band-client-rest
 uv sync --all-extras
 ```
 
-> **Important:** You must clear the uv cache with `uv cache clean --force thenvoi-rest` before re-resolving. Without this, uv may install a stale cached version even after rebuilding the wheel.
+> **Important:** You must clear the uv cache with `uv cache clean --force band-client-rest` before re-resolving. Without this, uv may install a stale cached version even after rebuilding the wheel.
 
 ### Running Tests
 
@@ -645,31 +669,31 @@ uv run pytest -v
 uv run pytest tests/test_agents.py -v
 
 # Generate HTML coverage report
-uv run pytest --cov=src/thenvoi_mcp --cov-report=html
+uv run pytest --cov=src/band_mcp --cov-report=html
 ```
 
 ## 📚 Resources
 
 - [Model Context Protocol Documentation](https://modelcontextprotocol.io)
-- [Thenvoi Platform](https://app.thenvoi.com)
+- [Band Platform](https://app.band.ai)
 - [uv Package Manager](https://docs.astral.sh/uv/)
 
 ### Using Context7 MCP for Documentation
 
-[Context7](https://github.com/upstash/context7) is an MCP server that provides up-to-date documentation for libraries and frameworks. It's highly recommended to use Context7 alongside Thenvoi MCP when developing—it helps your AI assistant fetch accurate, current documentation.
+[Context7](https://github.com/upstash/context7) is an MCP server that provides up-to-date documentation for libraries and frameworks. It's highly recommended to use Context7 alongside Band MCP when developing—it helps your AI assistant fetch accurate, current documentation.
 
 #### Adding Context7 to Your MCP Configuration
 
-Add Context7 to your existing MCP configuration alongside Thenvoi:
+Add Context7 to your existing MCP configuration alongside Band:
 
 ```json
 {
   "mcpServers": {
-    "thenvoi": {
-      "command": "thenvoi-mcp",
+    "band": {
+      "command": "band-mcp",
       "env": {
-        "THENVOI_API_KEY": "your_api_key_here",
-        "THENVOI_BASE_URL": "https://app.thenvoi.com"
+        "BAND_API_KEY": "your_api_key_here",
+        "BAND_BASE_URL": "https://app.band.ai"
       }
     },
     "context7": {
@@ -686,7 +710,7 @@ Add Context7 to your existing MCP configuration alongside Thenvoi:
 
 Once configured, you can ask your AI assistant to fetch documentation:
 
-- *"Look up the Thenvoi REST API documentation with Context7"*
+- *"Look up the Band REST API documentation with Context7"*
 
 Context7 will retrieve current documentation directly from official sources, ensuring your AI assistant has accurate information when helping you code.
 

@@ -1,6 +1,6 @@
 """Tests for transport security configuration (INT-87).
 
-These tests verify that thenvoi-mcp properly exposes DNS rebinding protection
+These tests verify that band-mcp properly exposes DNS rebinding protection
 settings, allowing users to configure allowed hosts for Docker/remote deployments.
 """
 
@@ -19,11 +19,11 @@ from starlette.requests import Request
 
 
 class TestTransportSecuritySettings:
-    """Tests for thenvoi-mcp transport security configuration."""
+    """Tests for band-mcp transport security configuration."""
 
     def test_default_enables_dns_rebinding_protection(self) -> None:
         """DNS rebinding protection should be enabled by default for security."""
-        from thenvoi_mcp.config import Settings
+        from band_mcp.config import Settings
 
         settings = Settings()
 
@@ -31,7 +31,7 @@ class TestTransportSecuritySettings:
 
     def test_default_allowed_hosts_is_empty(self) -> None:
         """Allowed hosts should be empty by default (users must configure)."""
-        from thenvoi_mcp.config import Settings
+        from band_mcp.config import Settings
 
         settings = Settings()
 
@@ -39,7 +39,7 @@ class TestTransportSecuritySettings:
 
     def test_default_allowed_origins_is_empty(self) -> None:
         """Allowed origins should be empty by default."""
-        from thenvoi_mcp.config import Settings
+        from band_mcp.config import Settings
 
         settings = Settings()
 
@@ -51,7 +51,7 @@ class TestTransportSecuritySettings:
         """Users should be able to disable protection via environment variable."""
         monkeypatch.setenv("ENABLE_DNS_REBINDING_PROTECTION", "false")
 
-        from thenvoi_mcp.config import Settings
+        from band_mcp.config import Settings
 
         settings = Settings()
 
@@ -63,7 +63,7 @@ class TestTransportSecuritySettings:
         """Users should be able to configure allowed hosts via environment variable."""
         monkeypatch.setenv("ALLOWED_HOSTS", '["localhost:*", "host.docker.internal:*"]')
 
-        from thenvoi_mcp.config import Settings
+        from band_mcp.config import Settings
 
         settings = Settings()
 
@@ -75,7 +75,7 @@ class TestTransportSecuritySettings:
         """Users should be able to configure allowed origins via environment variable."""
         monkeypatch.setenv("ALLOWED_ORIGINS", '["http://localhost:3000"]')
 
-        from thenvoi_mcp.config import Settings
+        from band_mcp.config import Settings
 
         settings = Settings()
 
@@ -87,14 +87,14 @@ class TestMcpTransportSecurityIntegration:
 
     def test_mcp_has_transport_security_configured(self) -> None:
         """The FastMCP instance should have transport_security settings."""
-        from thenvoi_mcp.shared import mcp
+        from band_mcp.shared import mcp
 
         assert mcp.settings.transport_security is not None
 
     def test_mcp_transport_security_reflects_settings(self) -> None:
         """Transport security should reflect the configured settings."""
-        from thenvoi_mcp.config import settings
-        from thenvoi_mcp.shared import mcp
+        from band_mcp.config import settings
+        from band_mcp.shared import mcp
 
         transport_security = mcp.settings.transport_security
 

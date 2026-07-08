@@ -1,82 +1,60 @@
-"""Integration tests to verify API operations against a real server.
+"""Live-API smoke tests for the SDK-driven registrar.
 
-These tests run against a real API server using credentials from .env.test.
-They verify the MCP tools work correctly end-to-end.
+Verify that read-only tools register and dispatch end-to-end against a real
+Band API, adapting to whichever scope(s) the ``BAND_API_KEY`` serves. Run with:
 
-Run with:
-    uv run pytest tests/integration/test_smoke.py -v --no-cov
+    uv run pytest tests/integration/test_smoke.py -v -s --no-cov
 """
 
-import json
+from __future__ import annotations
+
 import logging
 
-from tests.integration.conftest import get_test_agent_id, requires_api
-from thenvoi_mcp.tools.agent.agent_chats import list_agent_chats
-from thenvoi_mcp.tools.agent.agent_identity import get_agent_me, list_agent_peers
+import pytest
+
+from tests.integration.conftest import LiveHarness, requires_api
 
 logger = logging.getLogger(__name__)
 
 
 @requires_api
-class TestAgentIdentity:
-    """Tests for agent identity tools."""
+async def test_registrar_advertises_only_scoped_tools(harness: LiveHarness) -> None:
+    """Every registered tool is band_-prefixed and matches the served scope."""
+    names = await harness.names()
+    assert names, "registrar advertised no tools"
+    assert all(n.startswith("band_") for n in names), sorted(names)
 
-    def test_get_agent_me_returns_correct_agent(self, integration_ctx):
-        """Test that get_agent_me returns the correct agent profile."""
-        result = get_agent_me(integration_ctx)
-
-        parsed = json.loads(result)
-        assert "data" in parsed
-        assert parsed["data"] is not None
-
-        # Verify required fields
-        agent = parsed["data"]
-        assert "id" in agent
-        assert "name" in agent
-
-        # Verify this is the expected test agent
-        expected_agent_id = get_test_agent_id()
-        if expected_agent_id:
-            assert agent["id"] == expected_agent_id, (
-                f"Expected agent ID {expected_agent_id}, got {agent['id']}"
-            )
-
-        logger.info("Agent: %s (ID: %s)", agent["name"], agent["id"])
-
-    def test_list_agent_peers_returns_list(self, integration_ctx):
-        """Test that list_agent_peers returns a list of available peers."""
-        result = list_agent_peers(integration_ctx)
-
-        parsed = json.loads(result)
-        assert "data" in parsed
-        assert isinstance(parsed["data"], list)
-
-        # Verify peer structure if any exist
-        if parsed["data"]:
-            peer = parsed["data"][0]
-            assert "id" in peer
-            assert "name" in peer
-            assert "type" in peer  # "Agent" or "User"
-
-        logger.info("Found %d peers", len(parsed["data"]))
+    if "agent" in harness.scope:
+        assert "band_lookup_peers" in names
+    if "human" in harness.scope:
+        assert "band_list_my_chats" in names
+        assert "band_get_my_profile" in names
+    logger.info("Registered %d tools for scope %s", len(names), harness.scope)
 
 
 @requires_api
-class TestAgentChats:
-    """Tests for agent chat tools."""
+async def test_human_profile_and_chats_round_trip(harness: LiveHarness) -> None:
+    """Human read-only tools return well-formed payloads."""
+    if "human" not in harness.scope:
+        pytest.skip("human scope not served by this key")
 
-    def test_list_agent_chats_returns_list(self, integration_ctx):
-        """Test that list_agent_chats returns a list of chats."""
-        result = list_agent_chats(integration_ctx)
+    profile = await harness.call("band_get_my_profile")
+    assert isinstance(profile, dict), profile
 
-        parsed = json.loads(result)
-        assert "data" in parsed
-        assert isinstance(parsed["data"], list)
+    chats = await harness.call("band_list_my_chats")
+    # Responses are typically {"data": [...]} but tolerate a bare list.
+    data = chats.get("data") if isinstance(chats, dict) else chats
+    assert isinstance(data, list), chats
+    logger.info("Human sees %d chats", len(data))
 
-        # Verify chat structure if any exist
-        if parsed["data"]:
-            chat = parsed["data"][0]
-            assert "id" in chat
-            assert "title" in chat or chat.get("title") is None  # title can be null
 
-        logger.info("Found %d chats", len(parsed["data"]))
+@requires_api
+async def test_agent_lookup_peers_returns_list(harness: LiveHarness) -> None:
+    """Agent (room-less) read-only tool dispatches and returns a list."""
+    if "agent" not in harness.scope:
+        pytest.skip("agent scope not served by this key")
+
+    peers = await harness.call("band_lookup_peers")
+    data = peers.get("data") if isinstance(peers, dict) else peers
+    assert isinstance(data, list), peers
+    logger.info("Agent sees %d peers", len(data))

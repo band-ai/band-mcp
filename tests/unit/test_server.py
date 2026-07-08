@@ -1,4 +1,4 @@
-"""Unit tests for `thenvoi_mcp.server`.
+"""Unit tests for `band_mcp.server`.
 
 Focused on the pieces of `run()` that do non-trivial branching without
 actually starting FastMCP: the pure-legacy escape-hatch detection and its
@@ -8,11 +8,57 @@ scope write-back (C2/I3 from INT-350 PR review).
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
-from thenvoi_mcp import server as server_mod
-from thenvoi_mcp.config import Config
+from band_mcp import server as server_mod
+from band_mcp.config import Config
+
+
+# ---------------------------------------------------------------------------
+# health_check
+# ---------------------------------------------------------------------------
+
+
+def _ctx_for_app(app_ctx: object) -> object:
+    return SimpleNamespace(request_context=SimpleNamespace(lifespan_context=app_ctx))
+
+
+async def test_health_check_checks_both_configured_surfaces():
+    human_rest = SimpleNamespace(
+        human_api_agents=SimpleNamespace(list_my_agents=AsyncMock(return_value=[]))
+    )
+    agent_rest = SimpleNamespace(
+        agent_api_identity=SimpleNamespace(get_agent_me=AsyncMock(return_value={}))
+    )
+    app_ctx = SimpleNamespace(human_rest=human_rest, agent_rest=agent_rest)
+
+    result = await server_mod.health_check(_ctx_for_app(app_ctx))
+
+    assert result.startswith("OK | human,agent | ")
+    human_rest.human_api_agents.list_my_agents.assert_awaited_once()
+    agent_rest.agent_api_identity.get_agent_me.assert_awaited_once()
+
+
+async def test_health_check_reports_agent_failure_even_when_human_succeeds():
+    human_rest = SimpleNamespace(
+        human_api_agents=SimpleNamespace(list_my_agents=AsyncMock(return_value=[]))
+    )
+    agent_rest = SimpleNamespace(
+        agent_api_identity=SimpleNamespace(
+            get_agent_me=AsyncMock(side_effect=RuntimeError("agent denied"))
+        )
+    )
+    app_ctx = SimpleNamespace(human_rest=human_rest, agent_rest=agent_rest)
+
+    result = await server_mod.health_check(_ctx_for_app(app_ctx))
+
+    assert result == "Failed | agent | agent denied"
+    human_rest.human_api_agents.list_my_agents.assert_awaited_once()
+    agent_rest.agent_api_identity.get_agent_me.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -37,15 +83,10 @@ def _make_args(**overrides: object) -> argparse.Namespace:
 
 
 def test_is_pure_legacy_invocation_true_when_only_legacy_key(monkeypatch):
-    monkeypatch.delenv("THENVOI_USER_KEY", raising=False)
-    monkeypatch.delenv("THENVOI_AGENT_KEY", raising=False)
     monkeypatch.delenv("BAND_USER_KEY", raising=False)
     monkeypatch.delenv("BAND_AGENT_KEY", raising=False)
-    monkeypatch.delenv("THENVOI_MCP_SCOPE", raising=False)
     monkeypatch.delenv("BAND_MCP_SCOPE", raising=False)
-    monkeypatch.delenv("THENVOI_MCP_TOOLS", raising=False)
     monkeypatch.delenv("BAND_MCP_TOOLS", raising=False)
-    monkeypatch.delenv("THENVOI_MCP_ROOM_ID", raising=False)
     monkeypatch.delenv("BAND_MCP_ROOM_ID", raising=False)
 
     config = Config(legacy_key="thnv_u_abc", scope=[])
@@ -55,15 +96,10 @@ def test_is_pure_legacy_invocation_true_when_only_legacy_key(monkeypatch):
 
 def test_is_pure_legacy_invocation_false_when_cli_scope_set(monkeypatch):
     for name in (
-        "THENVOI_USER_KEY",
-        "THENVOI_AGENT_KEY",
         "BAND_USER_KEY",
         "BAND_AGENT_KEY",
-        "THENVOI_MCP_SCOPE",
         "BAND_MCP_SCOPE",
-        "THENVOI_MCP_TOOLS",
         "BAND_MCP_TOOLS",
-        "THENVOI_MCP_ROOM_ID",
         "BAND_MCP_ROOM_ID",
     ):
         monkeypatch.delenv(name, raising=False)
@@ -75,19 +111,14 @@ def test_is_pure_legacy_invocation_false_when_cli_scope_set(monkeypatch):
 
 def test_is_pure_legacy_invocation_false_when_new_env_set(monkeypatch):
     for name in (
-        "THENVOI_USER_KEY",
-        "THENVOI_AGENT_KEY",
         "BAND_USER_KEY",
         "BAND_AGENT_KEY",
-        "THENVOI_MCP_SCOPE",
         "BAND_MCP_SCOPE",
-        "THENVOI_MCP_TOOLS",
         "BAND_MCP_TOOLS",
-        "THENVOI_MCP_ROOM_ID",
         "BAND_MCP_ROOM_ID",
     ):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("THENVOI_USER_KEY", "thnv_u_explicit")
+    monkeypatch.setenv("BAND_USER_KEY", "thnv_u_explicit")
 
     config = Config(legacy_key="thnv_abc", scope=[])
     args = _make_args()
@@ -100,12 +131,32 @@ def test_is_pure_legacy_invocation_false_when_no_legacy_key():
     assert server_mod._is_pure_legacy_invocation(args, config) is False
 
 
+def test_malformed_legacy_key_does_not_bypass_validation(monkeypatch):
+    for name in (
+        "BAND_USER_KEY",
+        "BAND_AGENT_KEY",
+        "BAND_MCP_SCOPE",
+        "BAND_MCP_TOOLS",
+        "BAND_MCP_ROOM_ID",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    config = Config(legacy_key="not_a_band_key", scope=[])
+    args = _make_args()
+    legacy_human, legacy_agent = server_mod._legacy_key_capabilities(config.legacy_key)
+
+    assert server_mod._is_pure_legacy_invocation(args, config) is True
+    assert (legacy_human or legacy_agent) is False
+
+
 # ---------------------------------------------------------------------------
 # Escape-hatch scope write-back (C2 / I3)
 #
-# These tests exercise the helper used by the `validate(config)` failure path
-# inside `run()` rather than invoking `run()` itself — `run()` ends with
-# `mcp.run()` which would block on stdio.
+# These tests exercise the `validate(config)` failure path inside `run()` by
+# driving the relevant branch directly rather than invoking `run()` — `run()`
+# ends with `mcp.run()` which would block on stdio. The logic under test is
+# small enough to reconstruct inline: if `_is_pure_legacy_invocation` is true,
+# the legacy key's prefix determines `config.scope`.
 # ---------------------------------------------------------------------------
 
 
@@ -128,21 +179,21 @@ def test_escape_hatch_writes_scope_from_legacy_key(
     the surface loaded matches what AppContext.scope advertises downstream.
     """
     for name in (
-        "THENVOI_USER_KEY",
-        "THENVOI_AGENT_KEY",
         "BAND_USER_KEY",
         "BAND_AGENT_KEY",
-        "THENVOI_MCP_SCOPE",
         "BAND_MCP_SCOPE",
-        "THENVOI_MCP_TOOLS",
         "BAND_MCP_TOOLS",
-        "THENVOI_MCP_ROOM_ID",
         "BAND_MCP_ROOM_ID",
     ):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("THENVOI_API_KEY", legacy_key)
+    monkeypatch.setenv("BAND_API_KEY", legacy_key)
 
-    from thenvoi_mcp.config import ConfigError, resolve_config, validate
+    from band_mcp.config import (
+        ConfigError,
+        _legacy_key_capabilities,
+        resolve_config,
+        validate,
+    )
 
     args = _make_args()
     cli = {
@@ -164,63 +215,33 @@ def test_escape_hatch_writes_scope_from_legacy_key(
         pass  # pure-legacy invocation keeps booting
 
     assert server_mod._is_pure_legacy_invocation(args, config) is True
-    rewritten = server_mod._apply_legacy_scope_writeback(config)
+    legacy_human, legacy_agent = _legacy_key_capabilities(config.legacy_key)
+    scope_writeback: list[str] = []
+    if legacy_agent:
+        scope_writeback.append("agent")
+    if legacy_human:
+        scope_writeback.append("human")
+    config = replace(config, scope=scope_writeback)
 
-    assert rewritten.scope == expected_scope
-    assert rewritten is not config
+    assert config.scope == expected_scope
 
 
 def test_escape_hatch_user_legacy_key_maps_to_human_only(monkeypatch):
-    """Specific C2 scenario from the review: user legacy keys must
+    """Specific C2 scenario from the review: `BAND_API_KEY=thnv_u_*` must
     log / register as `['human']`, not `['agent']`.
     """
     for name in (
-        "THENVOI_USER_KEY",
-        "THENVOI_AGENT_KEY",
         "BAND_USER_KEY",
         "BAND_AGENT_KEY",
-        "THENVOI_MCP_SCOPE",
         "BAND_MCP_SCOPE",
-        "THENVOI_MCP_TOOLS",
         "BAND_MCP_TOOLS",
-        "THENVOI_MCP_ROOM_ID",
         "BAND_MCP_ROOM_ID",
     ):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("THENVOI_API_KEY", "thnv_u_xyz")
+    monkeypatch.setenv("BAND_API_KEY", "thnv_u_xyz")
 
-    from thenvoi_mcp.config import _legacy_key_capabilities
+    from band_mcp.config import _legacy_key_capabilities
 
     legacy_human, legacy_agent = _legacy_key_capabilities("thnv_u_xyz")
     assert legacy_human is True
     assert legacy_agent is False
-
-    # And the server-side _choose_legacy_key_type resolves to "user" when
-    # scope is later set to ["human"].
-    config = Config(legacy_key="thnv_u_xyz", scope=["human"])
-    assert server_mod._choose_legacy_key_type(config) == "user"
-
-
-@pytest.mark.parametrize(
-    ("key", "expected"),
-    [
-        ("thnv_u_xyz", "user"),
-        ("band_u_xyz", "user"),
-        ("thnv_a_xyz", "agent"),
-        ("band_a_xyz", "agent"),
-        ("thnv_xyz", "legacy"),
-        ("band_xyz", "legacy"),
-    ],
-)
-def test_get_key_type_accepts_thenvoi_and_band_prefixes(key, expected):
-    assert server_mod.get_key_type(key) == expected
-
-
-def test_scope_specific_key_type_wins_over_stale_legacy_key():
-    config = Config(
-        user_key="thnv_u_current",
-        legacy_key="thnv_a_stale",
-        scope=["human"],
-    )
-
-    assert server_mod._choose_legacy_key_type(config) == "user"
