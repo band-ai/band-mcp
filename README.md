@@ -23,6 +23,17 @@ Notable behavior changes:
 - Contact tools are no longer registered by default. Pass `--tools contacts` to restore them.
 - `get_agent_me`, `list_agent_chats`, and message-lifecycle tools (`mark_agent_message_*`) have been removed. `AgentTools` is room-scoped via the SDK; agent identity travels with the credential.
 - A handful of agent tools were renamed beyond the prefix (`create_agent_chat` → `band_create_chatroom`, `list_agent_peers` → `band_lookup_peers`, etc.).
+- All `THENVOI_*` environment variables have been dropped with **no fallback** — set the `BAND_*` equivalent before upgrading, or the server starts with empty credentials (`ConfigError` at best, 401s at worst):
+
+  | Old (`THENVOI_*`) | New (`BAND_*`) |
+  | --- | --- |
+  | `THENVOI_API_KEY` | `BAND_API_KEY` |
+  | `THENVOI_BASE_URL` | `BAND_BASE_URL` |
+  | `THENVOI_USER_KEY` | `BAND_USER_KEY` |
+  | `THENVOI_AGENT_KEY` | `BAND_AGENT_KEY` |
+  | `THENVOI_MCP_SCOPE` | `BAND_MCP_SCOPE` |
+  | `THENVOI_MCP_TOOLS` | `BAND_MCP_TOOLS` |
+  | `THENVOI_MCP_ROOM_ID` | `BAND_MCP_ROOM_ID` |
 
 ## 🚀 Quick Start
 

@@ -85,13 +85,8 @@ def _make_args(**overrides: object) -> argparse.Namespace:
 def test_is_pure_legacy_invocation_true_when_only_legacy_key(monkeypatch):
     monkeypatch.delenv("BAND_USER_KEY", raising=False)
     monkeypatch.delenv("BAND_AGENT_KEY", raising=False)
-    monkeypatch.delenv("BAND_USER_KEY", raising=False)
-    monkeypatch.delenv("BAND_AGENT_KEY", raising=False)
-    monkeypatch.delenv("BAND_MCP_SCOPE", raising=False)
     monkeypatch.delenv("BAND_MCP_SCOPE", raising=False)
     monkeypatch.delenv("BAND_MCP_TOOLS", raising=False)
-    monkeypatch.delenv("BAND_MCP_TOOLS", raising=False)
-    monkeypatch.delenv("BAND_MCP_ROOM_ID", raising=False)
     monkeypatch.delenv("BAND_MCP_ROOM_ID", raising=False)
 
     config = Config(legacy_key="thnv_u_abc", scope=[])
@@ -103,13 +98,8 @@ def test_is_pure_legacy_invocation_false_when_cli_scope_set(monkeypatch):
     for name in (
         "BAND_USER_KEY",
         "BAND_AGENT_KEY",
-        "BAND_USER_KEY",
-        "BAND_AGENT_KEY",
-        "BAND_MCP_SCOPE",
         "BAND_MCP_SCOPE",
         "BAND_MCP_TOOLS",
-        "BAND_MCP_TOOLS",
-        "BAND_MCP_ROOM_ID",
         "BAND_MCP_ROOM_ID",
     ):
         monkeypatch.delenv(name, raising=False)
@@ -123,13 +113,8 @@ def test_is_pure_legacy_invocation_false_when_new_env_set(monkeypatch):
     for name in (
         "BAND_USER_KEY",
         "BAND_AGENT_KEY",
-        "BAND_USER_KEY",
-        "BAND_AGENT_KEY",
-        "BAND_MCP_SCOPE",
         "BAND_MCP_SCOPE",
         "BAND_MCP_TOOLS",
-        "BAND_MCP_TOOLS",
-        "BAND_MCP_ROOM_ID",
         "BAND_MCP_ROOM_ID",
     ):
         monkeypatch.delenv(name, raising=False)
@@ -150,13 +135,8 @@ def test_malformed_legacy_key_does_not_bypass_validation(monkeypatch):
     for name in (
         "BAND_USER_KEY",
         "BAND_AGENT_KEY",
-        "BAND_USER_KEY",
-        "BAND_AGENT_KEY",
-        "BAND_MCP_SCOPE",
         "BAND_MCP_SCOPE",
         "BAND_MCP_TOOLS",
-        "BAND_MCP_TOOLS",
-        "BAND_MCP_ROOM_ID",
         "BAND_MCP_ROOM_ID",
     ):
         monkeypatch.delenv(name, raising=False)
@@ -201,13 +181,8 @@ def test_escape_hatch_writes_scope_from_legacy_key(
     for name in (
         "BAND_USER_KEY",
         "BAND_AGENT_KEY",
-        "BAND_USER_KEY",
-        "BAND_AGENT_KEY",
-        "BAND_MCP_SCOPE",
         "BAND_MCP_SCOPE",
         "BAND_MCP_TOOLS",
-        "BAND_MCP_TOOLS",
-        "BAND_MCP_ROOM_ID",
         "BAND_MCP_ROOM_ID",
     ):
         monkeypatch.delenv(name, raising=False)
@@ -258,13 +233,8 @@ def test_escape_hatch_user_legacy_key_maps_to_human_only(monkeypatch):
     for name in (
         "BAND_USER_KEY",
         "BAND_AGENT_KEY",
-        "BAND_USER_KEY",
-        "BAND_AGENT_KEY",
-        "BAND_MCP_SCOPE",
         "BAND_MCP_SCOPE",
         "BAND_MCP_TOOLS",
-        "BAND_MCP_TOOLS",
-        "BAND_MCP_ROOM_ID",
         "BAND_MCP_ROOM_ID",
     ):
         monkeypatch.delenv(name, raising=False)
