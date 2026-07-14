@@ -160,8 +160,13 @@ def create_agent_chat_message(
 ) -> str:
     """Send a text message in a chat room.
 
-    Creates a new text message in a chat room. Messages MUST include at least
-    one @mention to ensure proper routing to recipients.
+    Creates a new text message in a chat room. To route the message you MUST tag
+    at least one recipient using the `recipients` parameter (names) or the
+    `mentions` parameter (IDs) below.
+
+    IMPORTANT: do NOT write an @mention or @handle inside `content` itself.
+    `content` is plain prose only; the mention is added from `recipients`/
+    `mentions`. Writing an @handle in `content` produces a duplicate mention.
 
     TWO WAYS TO SPECIFY RECIPIENTS:
 
@@ -180,7 +185,9 @@ def create_agent_chat_message(
 
     Args:
         chat_id: The unique identifier of the chat room (required).
-        content: The message content/text (required).
+        content: The message content/text (required). Plain prose only — do NOT
+                 include any @mention or @handle here; tag recipients via
+                 `recipients`/`mentions` instead.
         recipients: Comma-separated participant names to tag (LLM-friendly).
                    Example: "weather agent,sarah,mike"
                    Names are resolved to IDs via list_agent_chat_participants.
