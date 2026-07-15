@@ -76,6 +76,38 @@ jobs:
       - name: Publish band-mcp to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
+      - name: Verify band-mcp is live on PyPI
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(ls dist/band_mcp-*.tar.gz | sed -E 's#.*/band_mcp-(.+)\.tar\.gz#\1#')"
+          if [ -z "${version}" ] || [ "$(printf '%s\n' "${version}" | wc -l)" -ne 1 ]; then
+            echo "::error::Expected exactly one band_mcp sdist in dist/; could not resolve a single version (got: '${version}')."
+            exit 1
+          fi
+          echo "Verifying band-mcp ${version} is served by PyPI with the just-built artifacts..."
+          # Hash only this version's artifacts so stray files in dist/ can't cause a false mismatch.
+          local_hashes="$(sha256sum dist/band_mcp-"${version}"* | awk '{print $1}' | sort -u)"
+          # ~5 min budget (19 x 15s) to absorb PyPI indexing / CDN lag before failing.
+          attempts=20
+          for attempt in $(seq 1 "${attempts}"); do
+            remote_hashes="$(curl -fsSL --connect-timeout 10 --max-time 30 \
+              "https://pypi.org/pypi/band-mcp/${version}/json" \
+              | python3 -c 'import json,sys; print("\n".join(u["digests"]["sha256"] for u in json.load(sys.stdin)["urls"]))' \
+              | sort -u || true)"
+            if [ -n "${remote_hashes}" ] \
+               && [ -z "$(comm -23 <(printf '%s\n' "${local_hashes}") <(printf '%s\n' "${remote_hashes}"))" ]; then
+              echo "✓ PyPI serves the exact band_mcp ${version} artifacts that were just built."
+              exit 0
+            fi
+            if [ "${attempt}" -lt "${attempts}" ]; then
+              echo "PyPI not updated yet (attempt ${attempt}/${attempts}); retrying in 15s..."
+              sleep 15
+            fi
+          done
+          echo "::error::band-mcp ${version} is not served by PyPI with the built artifacts after ${attempts} attempts — failing the release."
+          exit 1
+
   summary:
     needs: [release, publish-band]
     if: needs.release.outputs.release_created == 'true'
