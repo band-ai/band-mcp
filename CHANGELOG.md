@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2](https://github.com/thenvoi/thenvoi-mcp/compare/band-mcp-v1.3.1...band-mcp-v1.3.2) (2026-07-15)
+
+
+### Bug Fixes
+
+* release band-mcp 1.4.0 ([#123](https://github.com/thenvoi/thenvoi-mcp/issues/123)) ([6f563f5](https://github.com/thenvoi/thenvoi-mcp/commit/6f563f5a91d473041846c015eafb945974e820be))
+
 ## [1.3.1](https://github.com/thenvoi/thenvoi-mcp/compare/band-mcp-v1.3.1...band-mcp-v1.3.1) (2026-07-08)
 
 
