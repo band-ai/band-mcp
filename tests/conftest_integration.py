@@ -30,7 +30,7 @@ from mcp.server.fastmcp import FastMCP
 
 from band_mcp import shared
 from band_mcp.config import Config, legacy_key_capabilities
-from band_mcp.shared import build_app_context
+from band_mcp.context import build_app_context
 from band_mcp.tools.registrar import register_tools
 from thenvoi_testing.markers import skip_without_env
 from thenvoi_testing.settings import BaseTestSettings

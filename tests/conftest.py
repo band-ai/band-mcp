@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
 
-from band_mcp.shared import AppContext
+from band_mcp.context import AppContext
 
 
 def _assert_no_method_name_collisions() -> None:

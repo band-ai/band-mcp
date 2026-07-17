@@ -45,12 +45,9 @@ from pydantic.fields import FieldInfo
 from pydantic.json_schema import SkipJsonSchema
 
 from band_mcp.config import Config, ConfigError
+from band_mcp.context import get_app_context
 from band_mcp.shared import (
     AppContextType,
-    discard_agent_tools,
-    get_agent_tools,
-    get_agent_tools_lock,
-    get_human_tools,
     logger,
 )
 
@@ -77,6 +74,39 @@ AGENT_ROOM_BOUND_TOOL_NAMES: frozenset[str] = frozenset(
 AGENT_EVENT_COMPAT_TOOL_NAMES: frozenset[str] = frozenset({"band_send_event"})
 CHAT_ID_MAX_LENGTH = 255
 EVENT_MESSAGE_TYPE = Literal["tool_call", "tool_result", "thought", "error", "task"]
+
+
+def get_human_tools(ctx: AppContextType) -> Any:
+    """Return the context-owned HumanTools singleton."""
+    return get_app_context(ctx).human_tools
+
+
+def get_agent_tools(
+    ctx: AppContextType,
+    room_id: str | None,
+    *,
+    sdk_room_id: str | None = None,  # noqa: ARG001 - temporary registrar seam
+) -> Any:
+    """Resolve room-scoped tools through the context-owned cache."""
+    context = get_app_context(ctx)
+    return (
+        context.agent_tools_roomless
+        if room_id is None
+        else context.agent_tools_for(room_id)
+    )
+
+
+def discard_agent_tools(
+    ctx: AppContextType, room_id: str | None, instance: Any
+) -> None:
+    """Evict a stale room-scoped SDK instance from the application context."""
+    if room_id is not None:
+        get_app_context(ctx).discard(room_id, instance)
+
+
+def get_agent_tools_lock(ctx: AppContextType, room_id: str | None) -> Any:
+    """Return the context-owned lock stripe for one tool call."""
+    return get_app_context(ctx).room_lock(room_id)
 
 
 # ---------------------------------------------------------------------------
@@ -326,10 +356,8 @@ async def _invoke(
             if is_agent_room_bound:
                 return get_agent_tools(ctx, agent_cache_key)
             # Room-less agent tool (e.g. ``band_create_chatroom``). The
-            # SDK's ``AgentTools`` is constructor-scoped, but such tools only
-            # touch ``self.rest``. Keep them on the dedicated None cache key so
-            # they never share participant state with a room-scoped instance,
-            # while still passing a string sentinel to the SDK constructor.
+            # dedicated instance never shares participant state with a
+            # room-scoped instance.
             return get_agent_tools(ctx, None, sdk_room_id="")
         return get_human_tools(ctx)
 

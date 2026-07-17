@@ -24,10 +24,10 @@ from band_mcp.config import (
     resolve_config,
     validate,
 )
+from band_mcp.context import get_app_context
 from band_mcp.settings import settings
 from band_mcp.shared import (
     AppContextType,
-    get_app_context,
     logger,
     mcp,
     set_pending_config,
