@@ -29,7 +29,7 @@ import pytest
 from mcp.server.fastmcp import FastMCP
 
 from band_mcp import shared
-from band_mcp.config import Config, _legacy_key_capabilities
+from band_mcp.config import Config, legacy_key_capabilities
 from band_mcp.shared import build_app_context
 from band_mcp.tools.registrar import register_tools
 from thenvoi_testing.markers import skip_without_env
@@ -125,7 +125,7 @@ def live_config() -> Config:
     if not key:
         pytest.skip("BAND_API_KEY not set")
 
-    can_human, can_agent = _legacy_key_capabilities(key)
+    can_human, can_agent = legacy_key_capabilities(key)
     scope: list[Any] = []
     if can_agent:
         scope.append("agent")

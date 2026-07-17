@@ -143,7 +143,7 @@ def test_malformed_legacy_key_does_not_bypass_validation(monkeypatch):
 
     config = Config(legacy_key="not_a_band_key", scope=[])
     args = _make_args()
-    legacy_human, legacy_agent = server_mod._legacy_key_capabilities(config.legacy_key)
+    legacy_human, legacy_agent = server_mod.legacy_key_capabilities(config.legacy_key)
 
     assert server_mod._is_pure_legacy_invocation(args, config) is True
     assert (legacy_human or legacy_agent) is False
@@ -190,7 +190,7 @@ def test_escape_hatch_writes_scope_from_legacy_key(
 
     from band_mcp.config import (
         ConfigError,
-        _legacy_key_capabilities,
+        legacy_key_capabilities,
         resolve_config,
         validate,
     )
@@ -215,7 +215,7 @@ def test_escape_hatch_writes_scope_from_legacy_key(
         pass  # pure-legacy invocation keeps booting
 
     assert server_mod._is_pure_legacy_invocation(args, config) is True
-    legacy_human, legacy_agent = _legacy_key_capabilities(config.legacy_key)
+    legacy_human, legacy_agent = legacy_key_capabilities(config.legacy_key)
     scope_writeback: list[str] = []
     if legacy_agent:
         scope_writeback.append("agent")
@@ -240,8 +240,8 @@ def test_escape_hatch_user_legacy_key_maps_to_human_only(monkeypatch):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("BAND_API_KEY", "thnv_u_xyz")
 
-    from band_mcp.config import _legacy_key_capabilities
+    from band_mcp.config import legacy_key_capabilities
 
-    legacy_human, legacy_agent = _legacy_key_capabilities("thnv_u_xyz")
+    legacy_human, legacy_agent = legacy_key_capabilities("thnv_u_xyz")
     assert legacy_human is True
     assert legacy_agent is False

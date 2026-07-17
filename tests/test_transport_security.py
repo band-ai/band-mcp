@@ -23,7 +23,7 @@ class TestTransportSecuritySettings:
 
     def test_default_enables_dns_rebinding_protection(self) -> None:
         """DNS rebinding protection should be enabled by default for security."""
-        from band_mcp.config import Settings
+        from band_mcp.settings import Settings
 
         settings = Settings()
 
@@ -31,7 +31,7 @@ class TestTransportSecuritySettings:
 
     def test_default_allowed_hosts_is_empty(self) -> None:
         """Allowed hosts should be empty by default (users must configure)."""
-        from band_mcp.config import Settings
+        from band_mcp.settings import Settings
 
         settings = Settings()
 
@@ -39,7 +39,7 @@ class TestTransportSecuritySettings:
 
     def test_default_allowed_origins_is_empty(self) -> None:
         """Allowed origins should be empty by default."""
-        from band_mcp.config import Settings
+        from band_mcp.settings import Settings
 
         settings = Settings()
 
@@ -51,7 +51,7 @@ class TestTransportSecuritySettings:
         """Users should be able to disable protection via environment variable."""
         monkeypatch.setenv("ENABLE_DNS_REBINDING_PROTECTION", "false")
 
-        from band_mcp.config import Settings
+        from band_mcp.settings import Settings
 
         settings = Settings()
 
@@ -63,7 +63,7 @@ class TestTransportSecuritySettings:
         """Users should be able to configure allowed hosts via environment variable."""
         monkeypatch.setenv("ALLOWED_HOSTS", '["localhost:*", "host.docker.internal:*"]')
 
-        from band_mcp.config import Settings
+        from band_mcp.settings import Settings
 
         settings = Settings()
 
@@ -75,7 +75,7 @@ class TestTransportSecuritySettings:
         """Users should be able to configure allowed origins via environment variable."""
         monkeypatch.setenv("ALLOWED_ORIGINS", '["http://localhost:3000"]')
 
-        from band_mcp.config import Settings
+        from band_mcp.settings import Settings
 
         settings = Settings()
 
@@ -93,7 +93,7 @@ class TestMcpTransportSecurityIntegration:
 
     def test_mcp_transport_security_reflects_settings(self) -> None:
         """Transport security should reflect the configured settings."""
-        from band_mcp.config import settings
+        from band_mcp.settings import settings
         from band_mcp.shared import mcp
 
         transport_security = mcp.settings.transport_security

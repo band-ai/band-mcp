@@ -21,6 +21,7 @@ from band_mcp.config import (
     ConfigError,
     ConfigWarning,
     _suggest_value,
+    legacy_key_capabilities,
     resolve_config,
     resolve_credential_for_scope,
     validate,
@@ -90,6 +91,21 @@ def test_suggest_value_no_match():
 # ---------------------------------------------------------------------------
 # Credential precedence per slot
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("key", "expected"),
+    [
+        (None, (False, False)),
+        ("band_u_key", (True, False)),
+        ("band_a_key", (False, True)),
+        ("band_key", (True, True)),
+    ],
+)
+def test_legacy_key_capabilities_are_public(
+    key: str | None, expected: tuple[bool, bool]
+) -> None:
+    assert legacy_key_capabilities(key) == expected
 
 
 def test_user_key_cli_beats_env():

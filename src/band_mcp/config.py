@@ -14,8 +14,7 @@ environment mapping, and returns a `Config`. `validate(config)` raises
 `--scope` / `--tools` values do NOT fail startup; they are dropped from the
 resolved list and surfaced as `ConfigWarning` entries in `config.warnings`.
 
-The `Settings` model (transport, base_url, DNS rebinding) stays — only the
-credential/scope/tools plumbing is new.
+Transport and base-URL environment settings live in :mod:`band_mcp.settings`.
 """
 
 from __future__ import annotations
@@ -24,7 +23,23 @@ import difflib
 from dataclasses import dataclass, field
 from typing import Literal, Mapping, Sequence, cast
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from band_mcp.settings import Settings, settings
+
+__all__ = [
+    "Config",
+    "ConfigError",
+    "ConfigWarning",
+    "DEFAULT_SCOPE",
+    "DEFAULT_TOOLS",
+    "Scope",
+    "Settings",
+    "ToolGroup",
+    "legacy_key_capabilities",
+    "resolve_config",
+    "resolve_credential_for_scope",
+    "settings",
+    "validate",
+]
 
 Scope = Literal["agent", "human"]
 ToolGroup = Literal["contacts", "memory"]
@@ -93,45 +108,12 @@ class Config:
     warnings: list[ConfigWarning] = field(default_factory=list)
 
 
-class Settings(BaseSettings):
-    """Process-wide settings that are not part of the credential plumbing.
-
-    Kept as `pydantic-settings` for backward compatibility with existing code
-    paths that import `settings` directly.
-    """
-
-    # API configuration
-    band_api_key: str = ""
-    band_base_url: str = "https://app.band.ai"
-
-    # Transport configuration
-    transport: Literal["stdio", "sse"] = "stdio"
-
-    # SSE server configuration (only used when transport="sse")
-    host: str = "127.0.0.1"
-    port: int = 8000
-
-    # Transport security (DNS rebinding protection)
-    enable_dns_rebinding_protection: bool = True
-    allowed_hosts: list[str] = []
-    allowed_origins: list[str] = []
-
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        case_sensitive=False,
-        extra="ignore",
-    )
-
-
-settings = Settings()
-
-
 # ---------------------------------------------------------------------------
 # Key-prefix inference (legacy only)
 # ---------------------------------------------------------------------------
 
 
-def _legacy_key_capabilities(legacy_key: str | None) -> tuple[bool, bool]:
+def legacy_key_capabilities(legacy_key: str | None) -> tuple[bool, bool]:
     """Return (can_serve_human, can_serve_agent) for a legacy key.
 
     - `thnv_u_...` / `band_u_...` — user key, human only.
@@ -382,7 +364,7 @@ def resolve_config(
     # value of `value` is the semantic slot label ("legacy_key") so tests can
     # assert on it deterministically.
     if legacy_key is not None:
-        legacy_human, legacy_agent = _legacy_key_capabilities(legacy_key)
+        legacy_human, legacy_agent = legacy_key_capabilities(legacy_key)
         # A legacy key is "ignored" when BOTH of these hold:
         #   - the scope-specific slot that would otherwise have been filled
         #     from it is already populated, AND
@@ -429,7 +411,7 @@ def validate(config: Config) -> None:
             f"{', '.join(VALID_SCOPES)}."
         )
 
-    legacy_human, legacy_agent = _legacy_key_capabilities(config.legacy_key)
+    legacy_human, legacy_agent = legacy_key_capabilities(config.legacy_key)
 
     missing: list[str] = []
     if "human" in config.scope:
@@ -460,11 +442,11 @@ def resolve_credential_for_scope(config: Config, scope: Scope) -> str | None:
     if scope == "human":
         if config.user_key is not None:
             return config.user_key
-        legacy_human, _ = _legacy_key_capabilities(config.legacy_key)
+        legacy_human, _ = legacy_key_capabilities(config.legacy_key)
         return config.legacy_key if legacy_human else None
     if scope == "agent":
         if config.agent_key is not None:
             return config.agent_key
-        _, legacy_agent = _legacy_key_capabilities(config.legacy_key)
+        _, legacy_agent = legacy_key_capabilities(config.legacy_key)
         return config.legacy_key if legacy_agent else None
     return None

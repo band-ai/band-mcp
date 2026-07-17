@@ -20,11 +20,11 @@ from band_mcp import __version__
 from band_mcp.config import (
     Config,
     ConfigError,
-    _legacy_key_capabilities,
+    legacy_key_capabilities,
     resolve_config,
-    settings,
     validate,
 )
+from band_mcp.settings import settings
 from band_mcp.shared import (
     AppContextType,
     get_app_context,
@@ -226,7 +226,7 @@ def run() -> None:
         # operator supplied no explicit scope/keys, honor the old behavior.
         # This keeps existing deployments booting even when validate() would
         # otherwise complain.
-        legacy_human, legacy_agent = _legacy_key_capabilities(config.legacy_key)
+        legacy_human, legacy_agent = legacy_key_capabilities(config.legacy_key)
         if _is_pure_legacy_invocation(args, config) and (legacy_human or legacy_agent):
             logger.info(
                 "Proceeding via legacy BAND_API_KEY path (no new-style "
@@ -242,7 +242,7 @@ def run() -> None:
     # the credential's capabilities — a `thnv_u_*` legacy key lands as
     # ["human"], not ["agent"].
     if _is_pure_legacy_invocation(args, config):
-        legacy_human, legacy_agent = _legacy_key_capabilities(config.legacy_key)
+        legacy_human, legacy_agent = legacy_key_capabilities(config.legacy_key)
         legacy_scope: list[Literal["agent", "human"]] = []
         if legacy_agent:
             legacy_scope.append("agent")

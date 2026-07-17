@@ -34,7 +34,9 @@ def snapshot(config: Config) -> list[dict[str, Any]]:
     """Return the current advertised MCP tools for the supplied config."""
     register_tools(mcp, config)
     tools = asyncio.run(mcp.list_tools())
-    return [tool.model_dump(mode="json", by_alias=True, exclude_none=True) for tool in tools]
+    return [
+        tool.model_dump(mode="json", by_alias=True, exclude_none=True) for tool in tools
+    ]
 
 
 def main() -> None:

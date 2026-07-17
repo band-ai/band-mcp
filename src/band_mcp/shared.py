@@ -31,10 +31,10 @@ from band_rest import AsyncRestClient
 from band_mcp.config import (
     Config,
     ConfigError,
-    _legacy_key_capabilities,
-    settings,
+    legacy_key_capabilities,
     resolve_credential_for_scope,
 )
+from band_mcp.settings import settings
 
 logging.basicConfig(
     level=logging.INFO,
@@ -143,7 +143,7 @@ def build_app_context(
         # Legacy path with no resolved Config. Build clients only for scopes the
         # legacy key prefix can serve (e.g. thnv_u_* cannot serve agent calls).
         legacy_key = settings.band_api_key or ""
-        legacy_human, legacy_agent = _legacy_key_capabilities(legacy_key)
+        legacy_human, legacy_agent = legacy_key_capabilities(legacy_key)
         human_rest = (
             AsyncRestClient(api_key=legacy_key, base_url=base_url)
             if legacy_key and legacy_human
